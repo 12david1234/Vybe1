@@ -1,0 +1,10 @@
+create extension if not exists pgcrypto;
+create table if not exists public.events(id uuid primary key default gen_random_uuid(),organizer_id uuid not null references auth.users(id) on delete cascade,title text not null,slug text unique not null,description text default '',category text default 'Other',starts_at timestamptz not null,expires_at timestamptz not null,venue text default '',city text not null,country text not null,image_url text default '',price numeric default 0,currency text default 'USD',status text default 'published',created_at timestamptz default now());
+create table if not exists public.tickets(id uuid primary key default gen_random_uuid(),event_id uuid not null references public.events(id) on delete cascade,buyer_id uuid references auth.users(id) on delete set null,buyer_name text not null,buyer_email text not null,qr_token text unique not null default encode(gen_random_bytes(16),'hex'),created_at timestamptz default now());
+alter table public.events enable row level security; alter table public.tickets enable row level security;
+create policy "published events public" on public.events for select using(status='published' and expires_at>now());
+create policy "organizers create own events" on public.events for insert with check(auth.uid()=organizer_id);
+create policy "organizers update own events" on public.events for update using(auth.uid()=organizer_id);
+create policy "organizers delete own events" on public.events for delete using(auth.uid()=organizer_id);
+create policy "buyers create tickets" on public.tickets for insert with check(auth.uid()=buyer_id);
+create policy "buyers read own tickets" on public.tickets for select using(auth.uid()=buyer_id);
