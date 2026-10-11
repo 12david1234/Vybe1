@@ -2,19 +2,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+import { supabaseBrowser as supabase } from "../../lib/supabase";
 
 export default function AuthPage() {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(true);
+  const [checking, setChecking] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -31,13 +26,22 @@ export default function AuthPage() {
         return;
       }
 
-      setCheckingSession(false);
+      setChecking(false);
     }
 
     checkSession();
 
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        window.location.replace("/");
+      }
+    });
+
     return () => {
       active = false;
+      subscription.unsubscribe();
     };
   }, []);
 
@@ -64,9 +68,7 @@ export default function AuthPage() {
           return;
         }
 
-        setMessage(
-          "Account created. Check your email for the verification link."
-        );
+        setMessage("Account created. Check your email to verify it.");
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -80,19 +82,19 @@ export default function AuthPage() {
           return;
         }
 
-        setMessage("Login successful. Please try opening the homepage.");
+        setMessage("Login complete. Please try again.");
       }
     } catch (err) {
-      setError(err.message || "Something went wrong. Please try again.");
+      setError(err.message || "Login failed. Please try again.");
     } finally {
       setLoading(false);
     }
   }
 
-  if (checkingSession) {
+  if (checking) {
     return (
       <main style={styles.page}>
-        <p>Checking login...</p>
+        <p>Checking your session...</p>
       </main>
     );
   }
@@ -129,9 +131,7 @@ export default function AuthPage() {
           <input
             id="password"
             type="password"
-            autoComplete={
-              mode === "login" ? "current-password" : "new-password"
-            }
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
             placeholder="At least 6 characters"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -153,9 +153,7 @@ export default function AuthPage() {
         {error && <p style={styles.error}>{error}</p>}
 
         <p style={styles.switchText}>
-          {mode === "login"
-            ? "Don't have an account?"
-            : "Already have an account?"}{" "}
+          {mode === "login" ? "Don't have an account?" : "Already registered?"}{" "}
           <button
             type="button"
             style={styles.switchButton}
