@@ -102,7 +102,8 @@ export default function OrganizePage() {
       if (uploadError) throw uploadError;
 
       const { data: publicData } = supabase.storage
-        .from("event flyer")
+        supabase.storage
+  .from("event-flyers")
         .getPublicUrl(filePath);
 
       const eventData = {
