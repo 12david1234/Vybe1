@@ -131,9 +131,16 @@ export default function HomePage() {
             Discover
           </a>
 
-          <a href="/organize" style={styles.navLink}>
-            Organize
-          </a>
+  {session ? (
+  <button onClick={handleLogout} style={styles.navButton}>
+    Log out
+  </button>
+) : (
+  <a href="/auth" style={styles.navLink}>
+    Sign in
+  </a>
+)}
+          
 
           {!authReady ? (
             <span style={styles.navLink}>Loading...</span>
