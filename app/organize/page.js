@@ -92,7 +92,7 @@ export default function OrganizePage() {
         safeFileName;
 
       const { error: uploadError } = await supabase.storage
-        .from("event flyer")
+        .from("event-flyers")
         .upload(filePath, flyer, {
           cacheControl: "3600",
           upsert: false,
