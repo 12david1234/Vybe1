@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -14,8 +14,32 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    async function checkSession() {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (!active) return;
+
+      if (!error && data.session) {
+        window.location.replace("/");
+        return;
+      }
+
+      setCheckingSession(false);
+    }
+
+    checkSession();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -36,29 +60,41 @@ export default function AuthPage() {
         if (error) throw error;
 
         if (data.session) {
-          window.location.href = "/";
+          window.location.replace("/");
           return;
         }
 
         setMessage(
-          "Account created. Please check your email for the verification link."
+          "Account created. Check your email for the verification link."
         );
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
         });
 
         if (error) throw error;
 
-        window.location.href = "/";
-        return;
+        if (data.session) {
+          window.location.replace("/");
+          return;
+        }
+
+        setMessage("Login successful. Please try opening the homepage.");
       }
     } catch (err) {
       setError(err.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
+  }
+
+  if (checkingSession) {
+    return (
+      <main style={styles.page}>
+        <p>Checking login...</p>
+      </main>
+    );
   }
 
   return (
@@ -77,9 +113,7 @@ export default function AuthPage() {
         </p>
 
         <form onSubmit={handleSubmit}>
-          <label htmlFor="email" style={styles.label}>
-            Email address
-          </label>
+          <label htmlFor="email" style={styles.label}>Email address</label>
           <input
             id="email"
             type="email"
@@ -91,9 +125,7 @@ export default function AuthPage() {
             style={styles.input}
           />
 
-          <label htmlFor="password" style={styles.label}>
-            Password
-          </label>
+          <label htmlFor="password" style={styles.label}>Password</label>
           <input
             id="password"
             type="password"
@@ -170,20 +202,9 @@ const styles = {
     fontWeight: "bold",
     textDecoration: "none",
   },
-  heading: {
-    fontSize: 27,
-    marginBottom: 8,
-  },
-  subtitle: {
-    color: "#aab4c8",
-    lineHeight: 1.5,
-    marginBottom: 24,
-  },
-  label: {
-    display: "block",
-    marginBottom: 8,
-    fontSize: 14,
-  },
+  heading: { fontSize: 27, marginBottom: 8 },
+  subtitle: { color: "#aab4c8", lineHeight: 1.5, marginBottom: 24 },
+  label: { display: "block", marginBottom: 8, fontSize: 14 },
   input: {
     display: "block",
     width: "100%",
@@ -207,21 +228,9 @@ const styles = {
     fontWeight: "bold",
     cursor: "pointer",
   },
-  success: {
-    color: "#4ade80",
-    overflowWrap: "anywhere",
-    lineHeight: 1.5,
-  },
-  error: {
-    color: "#f87171",
-    overflowWrap: "anywhere",
-    lineHeight: 1.5,
-  },
-  switchText: {
-    color: "#aab4c8",
-    textAlign: "center",
-    marginTop: 24,
-  },
+  success: { color: "#4ade80", overflowWrap: "anywhere", lineHeight: 1.5 },
+  error: { color: "#f87171", overflowWrap: "anywhere", lineHeight: 1.5 },
+  switchText: { color: "#aab4c8", textAlign: "center", marginTop: 24 },
   switchButton: {
     color: "#c4b5fd",
     background: "none",
@@ -239,3 +248,4 @@ const styles = {
     fontSize: 14,
   },
 };
+
