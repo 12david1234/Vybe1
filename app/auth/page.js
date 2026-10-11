@@ -41,7 +41,7 @@ export default function AuthPage() {
         }
 
         setMessage(
-          "Account request successful. Please check your email for the verification link."
+          "Account created. Please check your email for the verification link."
         );
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -64,17 +64,15 @@ export default function AuthPage() {
   return (
     <main style={styles.page}>
       <section style={styles.card}>
-        <a href="/" style={styles.logo}>
-          VYBE
-        </a>
+        <a href="/" style={styles.logo}>VYBE</a>
 
         <h1 style={styles.heading}>
           {mode === "login" ? "Welcome back" : "Create your account"}
         </h1>
 
-        <p style={styles.subheading}>
+        <p style={styles.subtitle}>
           {mode === "login"
-            ? "Log in to continue to VYBE."
+            ? "Log in with your email and password."
             : "Sign up with your email to get started."}
         </p>
 
@@ -123,23 +121,23 @@ export default function AuthPage() {
         {error && <p style={styles.error}>{error}</p>}
 
         <p style={styles.switchText}>
-          {mode === "login" ? "Don't have an account?" : "Already registered?"}{" "}
+          {mode === "login"
+            ? "Don't have an account?"
+            : "Already have an account?"}{" "}
           <button
             type="button"
+            style={styles.switchButton}
             onClick={() => {
               setMode(mode === "login" ? "signup" : "login");
               setMessage("");
               setError("");
             }}
-            style={styles.switchButton}
           >
             {mode === "login" ? "Sign Up" : "Log In"}
           </button>
         </p>
 
-        <a href="/" style={styles.homeLink}>
-          Back to VYBE
-        </a>
+        <a href="/" style={styles.homeLink}>Back to VYBE</a>
       </section>
     </main>
   );
@@ -176,7 +174,7 @@ const styles = {
     fontSize: 27,
     marginBottom: 8,
   },
-  subheading: {
+  subtitle: {
     color: "#aab4c8",
     lineHeight: 1.5,
     marginBottom: 24,
