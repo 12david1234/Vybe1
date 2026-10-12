@@ -276,7 +276,7 @@ export default function OrganizePage() {
                 <img
                   src={preview}
                   alt="Flyer preview"
-                  className="max-h-72 rounded-lg object-contain"
+                  className="h-[30px] w-auto max-w-full rounded-lg object-contain"
                 />
               ) : (
                 <>
