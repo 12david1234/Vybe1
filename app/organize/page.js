@@ -271,8 +271,7 @@ export default function OrganizePage() {
               1. Upload event flyer *
             </h2>
 
-            <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-600 p-5 text-center">
-              {preview ? (
+            <label className=className="flex min-h-0 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-600 p-2 text-center"
                 <img
                   src={preview}
                   alt="Flyer preview"
