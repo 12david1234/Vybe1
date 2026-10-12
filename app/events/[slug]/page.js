@@ -65,12 +65,13 @@ export default function EventPage() {
     <main className="min-h-screen bg-black px-4 py-8 text-white">
       <article className="mx-auto max-w-2xl">
         {event.image_url && (
-          <img
-            src={event.image_url}
-            alt={event.title}
-            className="mb-6 max-h-64 w-full rounded-2xl object-contain"
-          />
-        )}
+          
+<img
+  src={event.image_url}
+  alt={event.title}
+  className="mb-4 h-auto max-h-[250px] w-full rounded-xl object-contain"
+/>
+
 
         <p className="text-sm text-blue-400">{event.category}</p>
 
