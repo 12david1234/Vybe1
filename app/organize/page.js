@@ -5,9 +5,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser as supabase } from "../../lib/supabase";
 
+const BUCKET = "event-flyers";
+
 export default function OrganizePage() {
   const router = useRouter();
-
   const [flyer, setFlyer] = useState(null);
   const [preview, setPreview] = useState("");
   const [title, setTitle] = useState("");
@@ -16,7 +17,7 @@ export default function OrganizePage() {
   const [places, setPlaces] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [venue, setVenue] = useState("");
-  const [category, setCategory] = useState("Music");
+  const [category, setCategory] = useState("Community");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [ticketMode, setTicketMode] = useState("rsvp");
@@ -27,7 +28,6 @@ export default function OrganizePage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  // Address suggestions using OpenStreetMap-based Photon
   useEffect(() => {
     if (address.trim().length < 3 || selectedPlace) {
       setPlaces([]);
@@ -35,19 +35,14 @@ export default function OrganizePage() {
     }
 
     const controller = new AbortController();
-
     const timer = setTimeout(async () => {
       try {
-        const url =
+        const response = await fetch(
           "https://photon.komoot.io/api/?limit=5&q=" +
-          encodeURIComponent(address);
-
-        const response = await fetch(url, {
-          signal: controller.signal,
-        });
-
+            encodeURIComponent(address),
+          { signal: controller.signal }
+        );
         if (!response.ok) return;
-
         const result = await response.json();
         setPlaces(result.features || []);
       } catch (err) {
@@ -69,7 +64,7 @@ export default function OrganizePage() {
     setMessage("");
 
     if (!file.type.startsWith("image/")) {
-      setError("Please select an image file for the flyer.");
+      setError("Please select an image file.");
       return;
     }
 
@@ -78,6 +73,7 @@ export default function OrganizePage() {
       return;
     }
 
+    if (preview) URL.revokeObjectURL(preview);
     setFlyer(file);
     setPreview(URL.createObjectURL(file));
   }
@@ -85,12 +81,13 @@ export default function OrganizePage() {
   function choosePlace(place) {
     const p = place.properties || {};
     const coords = place.geometry?.coordinates || [];
+    const city = p.city || p.town || p.village || p.county || "";
 
     const label = [
       p.name,
       p.street,
       p.housenumber,
-      p.city || p.town || p.village,
+      city,
       p.state,
       p.country,
     ]
@@ -102,7 +99,7 @@ export default function OrganizePage() {
       label,
       latitude: coords[1] ?? null,
       longitude: coords[0] ?? null,
-      city: p.city || p.town || p.village || p.county || "",
+      city,
       country: p.country || "",
     });
 
@@ -115,44 +112,33 @@ export default function OrganizePage() {
     setError("");
     setMessage("");
 
-    if (!flyer) {
-      setError("Please upload your event flyer first.");
-      return;
-    }
+    if (!flyer) return setError("Please upload your event flyer first.");
 
     if (!title.trim() || !description.trim()) {
-      setError("Please enter the event title and description.");
-      return;
+      return setError("Enter the event title and description.");
     }
 
     if (!selectedPlace) {
-      setError("Please select an address from the suggestions.");
-      return;
+      return setError("Type a location and select one of the suggestions.");
     }
 
     if (!startsAt || new Date(startsAt) <= new Date()) {
-      setError("Please select a future event start date and time.");
-      return;
+      return setError("Choose a future start date and time.");
     }
 
-    if (
-      endsAt &&
-      new Date(endsAt) <= new Date(startsAt)
-    ) {
-      setError("End date and time must be after the start.");
-      return;
+    if (endsAt && new Date(endsAt) <= new Date(startsAt)) {
+      return setError("End date/time must be after start date/time.");
     }
 
     if (
       ticketMode === "sell" &&
       (!ticketName.trim() ||
-        Number(price) < 0 ||
         price === "" ||
+        Number(price) < 0 ||
         !Number.isInteger(Number(quantity)) ||
         Number(quantity) < 1)
     ) {
-      setError("Enter a valid ticket name, price and quantity.");
-      return;
+      return setError("Check ticket name, price and quantity.");
     }
 
     setLoading(true);
@@ -163,7 +149,7 @@ export default function OrganizePage() {
 
       if (sessionError) throw sessionError;
 
-      if (!sessionData.session) {
+      if (!sessionData?.session) {
         setError("Please sign in before creating an event.");
         router.push("/auth");
         return;
@@ -175,25 +161,31 @@ export default function OrganizePage() {
         .replace(/[^a-zA-Z0-9._-]/g, "-")
         .slice(-100);
 
-      const filePath =
-        userId +
-        "/" +
-        Date.now() +
-        "-" +
-        safeFileName;
+      const filePath = `${userId}/${Date.now()}-${safeFileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from("event-flyers")
+        .from(BUCKET)
         .upload(filePath, flyer, {
           cacheControl: "3600",
           upsert: false,
           contentType: flyer.type,
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        const detail = [
+          `Upload failed: ${uploadError.message || "Unknown Storage error"}`,
+          uploadError.statusCode ? `Status: ${uploadError.statusCode}` : "",
+          `Bucket used: ${BUCKET}`,
+          "Check that this deployment uses the same Supabase project where this bucket exists.",
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        throw new Error(detail);
+      }
 
       const { data: publicData } = supabase.storage
-        .from("event-flyers")
+        .from(BUCKET)
         .getPublicUrl(filePath);
 
       const slug =
@@ -217,9 +209,7 @@ export default function OrganizePage() {
         longitude: selectedPlace.longitude,
         category,
         starts_at: new Date(startsAt).toISOString(),
-        ends_at: endsAt
-          ? new Date(endsAt).toISOString()
-          : null,
+        ends_at: endsAt ? new Date(endsAt).toISOString() : null,
         ticket_mode: ticketMode,
         price: ticketMode === "sell" ? Number(price) : 0,
         currency: "INR",
@@ -228,14 +218,15 @@ export default function OrganizePage() {
         status: "published",
       };
 
-      const { data: savedEvent, error: eventError } =
-        await supabase
-          .from("events")
-          .insert(eventData)
-          .select("id")
-          .single();
+      const { data: savedEvent, error: eventError } = await supabase
+        .from("events")
+        .insert(eventData)
+        .select("id")
+        .single();
 
-      if (eventError) throw eventError;
+      if (eventError) {
+        throw new Error(`Event save failed: ${eventError.message}`);
+      }
 
       if (ticketMode === "sell") {
         const { error: ticketError } = await supabase
@@ -250,8 +241,7 @@ export default function OrganizePage() {
 
         if (ticketError) {
           throw new Error(
-            "Event saved, but ticket setup failed: " +
-              ticketError.message
+            `Event saved, but ticket setup failed: ${ticketError.message}`
           );
         }
       }
@@ -259,21 +249,18 @@ export default function OrganizePage() {
       setMessage("Event published successfully!");
       router.push("/events/" + slug);
     } catch (err) {
-      setError(
-        err.message || "Could not publish the event."
-      );
+      setError(err?.message || "Could not publish the event.");
     } finally {
       setLoading(false);
     }
   }
 
+  const inputClass = "w-full rounded-xl bg-white p-4 text-black";
+
   return (
     <main className="min-h-screen bg-black px-4 py-8 text-white">
       <div className="mx-auto max-w-2xl">
-        <h1 className="mb-2 text-3xl font-bold">
-          Create your event
-        </h1>
-
+        <h1 className="mb-2 text-3xl font-bold">Create your event</h1>
         <p className="mb-8 text-gray-400">
           Start with your flyer, add event details and publish.
         </p>
@@ -284,20 +271,18 @@ export default function OrganizePage() {
               1. Upload event flyer *
             </h2>
 
-            <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-600 p-5 text-center hover:border-blue-500">
+            <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-600 p-5 text-center">
               {preview ? (
                 <img
                   src={preview}
-                  alt="Event flyer preview"
+                  alt="Flyer preview"
                   className="max-h-72 rounded-lg object-contain"
                 />
               ) : (
                 <>
-                  <span className="text-lg font-semibold">
-                    Upload flyer
-                  </span>
+                  <span className="text-lg font-semibold">Upload flyer</span>
                   <span className="mt-2 text-sm text-gray-400">
-                    Choose an image, up to 5 MB
+                    Image file, up to 5 MB
                   </span>
                 </>
               )}
@@ -312,9 +297,7 @@ export default function OrganizePage() {
           </section>
 
           <section className="space-y-4 rounded-2xl border border-gray-800 bg-neutral-950 p-5">
-            <h2 className="text-xl font-semibold">
-              2. Event details
-            </h2>
+            <h2 className="text-xl font-semibold">2. Event details</h2>
 
             <label className="block">
               <span className="mb-2 block">Event title *</span>
@@ -323,7 +306,7 @@ export default function OrganizePage() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Enter event name"
-                className="w-full rounded-xl bg-white p-4 text-black"
+                className={inputClass}
               />
             </label>
 
@@ -335,7 +318,7 @@ export default function OrganizePage() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Tell people about your event"
-                className="w-full rounded-xl bg-white p-4 text-black"
+                className={inputClass}
               />
             </label>
 
@@ -344,30 +327,30 @@ export default function OrganizePage() {
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-xl bg-white p-4 text-black"
+                className={inputClass}
               >
-                <option>Music</option>
-                <option>Nightlife</option>
-                <option>Business</option>
-                <option>Education</option>
-                <option>Food & Drink</option>
-                <option>Arts & Culture</option>
-                <option>Sports</option>
-                <option>Community</option>
-                <option>Other</option>
+                {[
+                  "Music",
+                  "Nightlife",
+                  "Business",
+                  "Education",
+                  "Food & Drink",
+                  "Arts & Culture",
+                  "Sports",
+                  "Community",
+                  "Other",
+                ].map((item) => (
+                  <option key={item}>{item}</option>
+                ))}
               </select>
             </label>
           </section>
 
           <section className="space-y-4 rounded-2xl border border-gray-800 bg-neutral-950 p-5">
-            <h2 className="text-xl font-semibold">
-              3. Location
-            </h2>
+            <h2 className="text-xl font-semibold">3. Location</h2>
 
             <label className="block">
-              <span className="mb-2 block">
-                Search and select address *
-              </span>
+              <span className="mb-2 block">Search and select address *</span>
               <input
                 required
                 value={address}
@@ -377,7 +360,7 @@ export default function OrganizePage() {
                 }}
                 placeholder="Type venue, street or city"
                 autoComplete="off"
-                className="w-full rounded-xl bg-white p-4 text-black"
+                className={inputClass}
               />
             </label>
 
@@ -388,16 +371,17 @@ export default function OrganizePage() {
                     type="button"
                     key={
                       place.properties?.osm_id ||
-                      place.properties?.name + index
+                      `${place.properties?.name}-${index}`
                     }
                     onClick={() => choosePlace(place)}
-                    className="block w-full border-b border-gray-800 p-4 text-left hover:bg-gray-800"
+                    className="block w-full border-b border-gray-800 p-4 text-left"
                   >
                     <span className="block font-medium">
                       {place.properties?.name ||
                         place.properties?.street ||
                         "Location"}
                     </span>
+
                     <span className="mt-1 block text-sm text-gray-400">
                       {[
                         place.properties?.city ||
@@ -421,60 +405,49 @@ export default function OrganizePage() {
             )}
 
             <label className="block">
-              <span className="mb-2 block">
-                Venue name (optional)
-              </span>
+              <span className="mb-2 block">Venue name (optional)</span>
               <input
                 value={venue}
                 onChange={(e) => setVenue(e.target.value)}
                 placeholder="Hall, club or venue name"
-                className="w-full rounded-xl bg-white p-4 text-black"
+                className={inputClass}
               />
             </label>
           </section>
 
           <section className="space-y-4 rounded-2xl border border-gray-800 bg-neutral-950 p-5">
-            <h2 className="text-xl font-semibold">
-              4. Date and time
-            </h2>
+            <h2 className="text-xl font-semibold">4. Date and time</h2>
 
             <label className="block">
-              <span className="mb-2 block">
-                Start date and time *
-              </span>
+              <span className="mb-2 block">Start date and time *</span>
               <input
                 required
                 type="datetime-local"
                 value={startsAt}
                 onChange={(e) => setStartsAt(e.target.value)}
-                className="w-full rounded-xl bg-white p-4 text-black"
+                className={inputClass}
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block">
-                End date and time
-              </span>
+              <span className="mb-2 block">End date and time</span>
               <input
                 type="datetime-local"
                 value={endsAt}
                 min={startsAt || undefined}
                 onChange={(e) => setEndsAt(e.target.value)}
-                className="w-full rounded-xl bg-white p-4 text-black"
+                className={inputClass}
               />
             </label>
           </section>
 
           <section className="space-y-4 rounded-2xl border border-gray-800 bg-neutral-950 p-5">
-            <h2 className="text-xl font-semibold">
-              5. Tickets and registration
-            </h2>
+            <h2 className="text-xl font-semibold">5. Tickets and registration</h2>
 
             <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-700 p-4">
               <input
                 type="radio"
                 name="ticketMode"
-                value="sell"
                 checked={ticketMode === "sell"}
                 onChange={() => setTicketMode("sell")}
                 className="mt-1"
@@ -482,7 +455,7 @@ export default function OrganizePage() {
               <span>
                 <strong className="block">Sell Tickets</strong>
                 <span className="text-sm text-gray-400">
-                  Set a ticket price and available quantity.
+                  Set ticket price and quantity.
                 </span>
               </span>
             </label>
@@ -491,7 +464,6 @@ export default function OrganizePage() {
               <input
                 type="radio"
                 name="ticketMode"
-                value="rsvp"
                 checked={ticketMode === "rsvp"}
                 onChange={() => setTicketMode("rsvp")}
                 className="mt-1"
@@ -499,7 +471,7 @@ export default function OrganizePage() {
               <span>
                 <strong className="block">Free RSVP</strong>
                 <span className="text-sm text-gray-400">
-                  Let guests register for free.
+                  Free event registration.
                 </span>
               </span>
             </label>
@@ -512,15 +484,12 @@ export default function OrganizePage() {
                     required
                     value={ticketName}
                     onChange={(e) => setTicketName(e.target.value)}
-                    placeholder="General Admission"
-                    className="w-full rounded-xl bg-white p-3 text-black"
+                    className={inputClass}
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block">
-                    Ticket price (INR) *
-                  </span>
+                  <span className="mb-2 block">Ticket price (INR) *</span>
                   <input
                     required
                     type="number"
@@ -528,14 +497,12 @@ export default function OrganizePage() {
                     step="0.01"
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
-                    className="w-full rounded-xl bg-white p-3 text-black"
+                    className={inputClass}
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block">
-                    Number of tickets *
-                  </span>
+                  <span className="mb-2 block">Number of tickets *</span>
                   <input
                     required
                     type="number"
@@ -543,23 +510,14 @@ export default function OrganizePage() {
                     step="1"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
-                    className="w-full rounded-xl bg-white p-3 text-black"
+                    className={inputClass}
                   />
                 </label>
 
                 <p className="text-sm text-gray-400">
-                  This saves ticket details. Online payment and
-                  attendee ticket checkout need a payment integration.
+                  Online payment requires a separate payment integration.
                 </p>
               </div>
-            )}
-
-            {ticketMode === "rsvp" && (
-              <p className="rounded-xl bg-gray-900 p-4 text-sm text-gray-300">
-                This creates a free RSVP event. The attendee
-                registration form must be connected separately
-                before guests can submit RSVPs.
-              </p>
             )}
           </section>
 
@@ -587,4 +545,3 @@ export default function OrganizePage() {
     </main>
   );
 }
-
