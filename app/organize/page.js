@@ -7,26 +7,74 @@ import { supabaseBrowser as supabase } from "../../lib/supabase";
 
 const BUCKET = "event-flyers";
 
+const FLYERS = [
+  {
+    name: "Party",
+    category: "Nightlife",
+    image:
+      "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=700&q=80",
+  },
+  {
+    name: "Music",
+    category: "Music",
+    image:
+      "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=700&q=80",
+  },
+  {
+    name: "Sports",
+    category: "Sports",
+    image:
+      "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=700&q=80",
+  },
+];
+
 export default function OrganizePage() {
   const router = useRouter();
+
   const [flyer, setFlyer] = useState(null);
   const [preview, setPreview] = useState("");
+  const [template, setTemplate] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [address, setAddress] = useState("");
   const [places, setPlaces] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [venue, setVenue] = useState("");
-  const [category, setCategory] = useState("Community");
+  const [category, setCategory] = useState("Music");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [ticketMode, setTicketMode] = useState("rsvp");
   const [ticketName, setTicketName] = useState("General Admission");
   const [price, setPrice] = useState("0");
   const [quantity, setQuantity] = useState("100");
+  const [organizationName, setOrganizationName] = useState("");
+  const [organization, setOrganization] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    async function loadOrganization() {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData?.session?.user;
+
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("id, name, slug")
+        .eq("owner_id", user.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) {
+        setOrganization(data);
+        setOrganizationName(data.name);
+      }
+    }
+
+    loadOrganization();
+  }, []);
 
   useEffect(() => {
     if (address.trim().length < 3 || selectedPlace) {
@@ -35,20 +83,23 @@ export default function OrganizePage() {
     }
 
     const controller = new AbortController();
+
     const timer = setTimeout(async () => {
       try {
         const response = await fetch(
-          "https://photon.komoot.io/api/?limit=5&q=" +
+          "https://photon.komoot.io/api/?limit=6&q=" +
             encodeURIComponent(address),
           { signal: controller.signal }
         );
+
         if (!response.ok) return;
+
         const result = await response.json();
         setPlaces(result.features || []);
       } catch (err) {
         if (err.name !== "AbortError") setPlaces([]);
       }
-    }, 500);
+    }, 450);
 
     return () => {
       clearTimeout(timer);
@@ -56,26 +107,32 @@ export default function OrganizePage() {
     };
   }, [address, selectedPlace]);
 
+  function selectTemplate(item) {
+    setTemplate(item.name);
+    setCategory(item.category);
+    setFlyer(null);
+    setPreview(item.image);
+    setError("");
+  }
+
   function handleFlyer(event) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setError("");
-    setMessage("");
-
     if (!file.type.startsWith("image/")) {
-      setError("Please select an image file.");
+      setError("Please choose an image.");
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setError("Flyer must be smaller than 5 MB.");
+      setError("Image must be smaller than 5 MB.");
       return;
     }
 
-    if (preview) URL.revokeObjectURL(preview);
     setFlyer(file);
+    setTemplate("");
     setPreview(URL.createObjectURL(file));
+    setError("");
   }
 
   function choosePlace(place) {
@@ -92,54 +149,35 @@ export default function OrganizePage() {
       p.country,
     ]
       .filter(Boolean)
-      .filter((value, index, array) => array.indexOf(value) === index)
+      .filter((v, i, a) => a.indexOf(v) === i)
       .join(", ");
 
     setSelectedPlace({
       label,
-      latitude: coords[1] ?? null,
-      longitude: coords[0] ?? null,
       city,
       country: p.country || "",
+      latitude: coords[1] ?? null,
+      longitude: coords[0] ?? null,
     });
 
     setAddress(label);
     setPlaces([]);
   }
 
-  async function publishEvent(event) {
-    event.preventDefault();
+  async function publishEvent(e) {
+    e.preventDefault();
     setError("");
     setMessage("");
 
-    if (!flyer) return setError("Please upload your event flyer first.");
-
-    if (!title.trim() || !description.trim()) {
+    if (!preview) return setError("Select a flyer or upload a photo.");
+    if (!title.trim() || !description.trim())
       return setError("Enter the event title and description.");
-    }
-
-    if (!selectedPlace) {
-      return setError("Type a location and select one of the suggestions.");
-    }
-
-    if (!startsAt || new Date(startsAt) <= new Date()) {
+    if (!selectedPlace)
+      return setError("Search for a location and select a suggestion.");
+    if (!startsAt || new Date(startsAt) <= new Date())
       return setError("Choose a future start date and time.");
-    }
-
-    if (endsAt && new Date(endsAt) <= new Date(startsAt)) {
-      return setError("End date/time must be after start date/time.");
-    }
-
-    if (
-      ticketMode === "sell" &&
-      (!ticketName.trim() ||
-        price === "" ||
-        Number(price) < 0 ||
-        !Number.isInteger(Number(quantity)) ||
-        Number(quantity) < 1)
-    ) {
-      return setError("Check ticket name, price and quantity.");
-    }
+    if (endsAt && new Date(endsAt) <= new Date(startsAt))
+      return setError("End time must be after start time.");
 
     setLoading(true);
 
@@ -149,52 +187,68 @@ export default function OrganizePage() {
 
       if (sessionError) throw sessionError;
 
-      if (!sessionData?.session) {
-        setError("Please sign in before creating an event.");
+      const user = sessionData?.session?.user;
+
+      if (!user) {
         router.push("/auth");
         return;
       }
 
-      const userId = sessionData.session.user.id;
+      // Reuse the existing organization, or create one once.
+      let org = organization;
 
-      const safeFileName = flyer.name
-        .replace(/[^a-zA-Z0-9._-]/g, "-")
-        .slice(-100);
+      if (!org) {
+        const name = organizationName.trim();
 
-      const filePath = `${userId}/${Date.now()}-${safeFileName}`;
+        if (!name) {
+          throw new Error("Enter your organization name first.");
+        }
 
-      const { error: uploadError } = await supabase.storage
-        .from(BUCKET)
-        .upload(filePath, flyer, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: flyer.type,
-        });
+        const orgSlug =
+          name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "") +
+          "-" +
+          Date.now().toString(36);
 
-      if (uploadError) {
-        const detail = [
-          `Upload failed: ${uploadError.message || "Unknown Storage error"}`,
-          uploadError.statusCode ? `Status: ${uploadError.statusCode}` : "",
-          `Bucket used: ${BUCKET}`,
-          "Check that this deployment uses the same Supabase project where this bucket exists.",
-        ]
-          .filter(Boolean)
-          .join(" ");
+        const { data: createdOrg, error: orgError } = await supabase
+          .from("organizations")
+          .insert({
+            owner_id: user.id,
+            name,
+            slug: orgSlug,
+          })
+          .select("id, name, slug")
+          .single();
 
-        throw new Error(detail);
+        if (orgError) throw new Error("Organization: " + orgError.message);
+
+        org = createdOrg;
+        setOrganization(createdOrg);
       }
 
-      const { data: publicData } = supabase.storage
-        .from(BUCKET)
-        .getPublicUrl(filePath);
+      let imageUrl = preview;
+
+      if (flyer) {
+        const safeName = flyer.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+        const path = `${user.id}/${Date.now()}-${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from(BUCKET)
+          .upload(path, flyer, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: flyer.type,
+          });
+
+        if (uploadError) throw new Error("Flyer upload: " + uploadError.message);
+
+        imageUrl = supabase.storage.from(BUCKET).getPublicUrl(path)
+          .data.publicUrl;
+      }
 
       const slug =
-        title
-          .trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-|-$/g, "")
-          .slice(0, 65) +
+        title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "").slice(0, 55) +
         "-" +
         Date.now().toString(36);
 
@@ -213,20 +267,20 @@ export default function OrganizePage() {
         ticket_mode: ticketMode,
         price: ticketMode === "sell" ? Number(price) : 0,
         currency: "INR",
-        image_url: publicData.publicUrl,
+        image_url: imageUrl,
         slug,
         status: "published",
+        organizer_id: user.id,
+        organization_id: org.id,
       };
 
-      const { data: savedEvent, error: eventError } = await supabase
+      const { data: savedEvent, error: saveError } = await supabase
         .from("events")
         .insert(eventData)
         .select("id")
         .single();
 
-      if (eventError) {
-        throw new Error(`Event save failed: ${eventError.message}`);
-      }
+      if (saveError) throw new Error("Event save: " + saveError.message);
 
       if (ticketMode === "sell") {
         const { error: ticketError } = await supabase
@@ -240,13 +294,10 @@ export default function OrganizePage() {
           });
 
         if (ticketError) {
-          throw new Error(
-            `Event saved, but ticket setup failed: ${ticketError.message}`
-          );
+          throw new Error("Ticket setup: " + ticketError.message);
         }
       }
 
-      setMessage("Event published successfully!");
       router.push("/events/" + slug);
     } catch (err) {
       setError(err?.message || "Could not publish the event.");
@@ -255,170 +306,182 @@ export default function OrganizePage() {
     }
   }
 
-  const inputClass = "w-full rounded-xl bg-white p-4 text-black";
+  const inputClass =
+    "w-full min-w-0 rounded-xl border border-gray-700 bg-neutral-900 p-3 text-white";
 
   return (
-    <main className="min-h-screen bg-black px-4 py-8 text-white">
+    <main className="min-h-screen bg-black px-4 py-5 text-white">
       <div className="mx-auto max-w-2xl">
-        <h1 className="mb-2 text-3xl font-bold">Create your event</h1>
-        <p className="mb-8 text-gray-400">
-          Start with your flyer, add event details and publish.
+        <h1 className="text-2xl font-bold">Create an event</h1>
+        <p className="mb-5 mt-1 text-sm text-gray-400">
+          Create once. Publish more events with your organization.
         </p>
 
-        <form onSubmit={publishEvent} className="space-y-6">
-          <section className="rounded-2xl border border-gray-800 bg-neutral-950 p-5">
-            <h2 className="mb-4 text-xl font-semibold">
-              1. Upload event flyer *
-            </h2>
+        <form onSubmit={publishEvent} className="space-y-5">
+          <section className="space-y-3 rounded-2xl border border-gray-800 p-4">
+            <h2 className="font-semibold">Organization</h2>
 
-            <label className=className="flex min-h-0 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-600 p-2 text-center"
-                <img
-                  src={preview}
-                  alt="Flyer preview"
-                  className="h-[30px] w-auto max-w-full rounded-lg object-contain"
+            {organization ? (
+              <p className="rounded-xl bg-neutral-900 p-3">
+                Using: <strong>{organization.name}</strong>
+              </p>
+            ) : (
+              <label className="block">
+                <span className="mb-2 block text-sm">
+                  Organization name *
+                </span>
+                <input
+                  required
+                  value={organizationName}
+                  onChange={(e) => setOrganizationName(e.target.value)}
+                  placeholder="Your organization name"
+                  className={inputClass}
                 />
-              ) : (
-                <>
-                  <span className="text-lg font-semibold">Upload flyer</span>
-                  <span className="mt-2 text-sm text-gray-400">
-                    Image file, up to 5 MB
-                  </span>
-                </>
-              )}
+              </label>
+            )}
+          </section>
 
+          <section className="space-y-3 rounded-2xl border border-gray-800 p-4">
+            <h2 className="font-semibold">Choose a flyer</h2>
+
+            <div className="grid grid-cols-3 gap-2">
+              {FLYERS.map((item) => (
+                <button
+                  key={item.name}
+                  type="button"
+                  onClick={() => selectTemplate(item)}
+                  className={`overflow-hidden rounded-xl border p-1 ${
+                    template === item.name
+                      ? "border-blue-500"
+                      : "border-gray-700"
+                  }`}
+                >
+                  <img
+                    src={item.image}
+                    alt={item.name}
+                    className="h-24 w-full rounded-lg object-cover"
+                  />
+                  <span className="block py-2 text-sm">{item.name}</span>
+                </button>
+              ))}
+            </div>
+
+            <label className="block cursor-pointer rounded-xl border border-dashed border-gray-600 p-3 text-center">
+              <span className="text-sm">Or upload your own photo</span>
               <input
                 type="file"
                 accept="image/*"
                 onChange={handleFlyer}
-                className="hidden"
-              />
-            </label>
-          </section>
-
-          <section className="space-y-4 rounded-2xl border border-gray-800 bg-neutral-950 p-5">
-            <h2 className="text-xl font-semibold">2. Event details</h2>
-
-            <label className="block">
-              <span className="mb-2 block">Event title *</span>
-              <input
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Enter event name"
-                className={inputClass}
+                className="mt-2 block w-full text-sm"
               />
             </label>
 
-            <label className="block">
-              <span className="mb-2 block">Description *</span>
-              <textarea
-                required
-                rows={5}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Tell people about your event"
-                className={inputClass}
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block">Category *</span>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className={inputClass}
-              >
-                {[
-                  "Music",
-                  "Nightlife",
-                  "Business",
-                  "Education",
-                  "Food & Drink",
-                  "Arts & Culture",
-                  "Sports",
-                  "Community",
-                  "Other",
-                ].map((item) => (
-                  <option key={item}>{item}</option>
-                ))}
-              </select>
-            </label>
-          </section>
-
-          <section className="space-y-4 rounded-2xl border border-gray-800 bg-neutral-950 p-5">
-            <h2 className="text-xl font-semibold">3. Location</h2>
-
-            <label className="block">
-              <span className="mb-2 block">Search and select address *</span>
-              <input
-                required
-                value={address}
-                onChange={(e) => {
-                  setAddress(e.target.value);
-                  setSelectedPlace(null);
-                }}
-                placeholder="Type venue, street or city"
-                autoComplete="off"
-                className={inputClass}
-              />
-            </label>
-
-            {places.length > 0 && (
-              <div className="overflow-hidden rounded-xl border border-gray-700">
-                {places.map((place, index) => (
+            {preview && (
+              <div className="flex items-center gap-3 rounded-xl bg-neutral-900 p-3">
+                <img
+                  src={preview}
+                  alt="Selected flyer"
+                  className="h-20 w-16 rounded-lg object-cover"
+                />
+                <div className="text-sm text-gray-300">
+                  Flyer selected
                   <button
                     type="button"
-                    key={
-                      place.properties?.osm_id ||
-                      `${place.properties?.name}-${index}`
-                    }
-                    onClick={() => choosePlace(place)}
-                    className="block w-full border-b border-gray-800 p-4 text-left"
+                    className="ml-2 text-blue-400"
+                    onClick={() => {
+                      setPreview("");
+                      setFlyer(null);
+                      setTemplate("");
+                    }}
                   >
-                    <span className="block font-medium">
-                      {place.properties?.name ||
-                        place.properties?.street ||
-                        "Location"}
-                    </span>
-
-                    <span className="mt-1 block text-sm text-gray-400">
-                      {[
-                        place.properties?.city ||
-                          place.properties?.town ||
-                          place.properties?.village,
-                        place.properties?.state,
-                        place.properties?.country,
-                      ]
-                        .filter(Boolean)
-                        .join(", ")}
-                    </span>
+                    Remove
                   </button>
-                ))}
+                </div>
               </div>
             )}
+          </section>
+
+          <section className="space-y-3 rounded-2xl border border-gray-800 p-4">
+            <h2 className="font-semibold">Event details</h2>
+            <input
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Event name *"
+              className={inputClass}
+            />
+            <textarea
+              required
+              rows={4}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Event description *"
+              className={inputClass}
+            />
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className={inputClass}
+            >
+              {["Music", "Nightlife", "Sports", "Business", "Education",
+                "Food & Drink", "Arts & Culture", "Community", "Other"]
+                .map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </section>
+
+          <section className="space-y-3 rounded-2xl border border-gray-800 p-4">
+            <h2 className="font-semibold">Location — worldwide</h2>
+            <input
+              required
+              value={address}
+              onChange={(e) => {
+                setAddress(e.target.value);
+                setSelectedPlace(null);
+              }}
+              placeholder="Search city, country, address *"
+              autoComplete="off"
+              className={inputClass}
+            />
+
+            {places.map((place, index) => (
+              <button
+                key={place.properties?.osm_id || index}
+                type="button"
+                onClick={() => choosePlace(place)}
+                className="block w-full rounded-lg border border-gray-800 p-3 text-left"
+              >
+                <span className="block">
+                  {place.properties?.name || place.properties?.street || "Location"}
+                </span>
+                <span className="text-sm text-gray-400">
+                  {[
+                    place.properties?.city || place.properties?.town ||
+                      place.properties?.village,
+                    place.properties?.state,
+                    place.properties?.country,
+                  ].filter(Boolean).join(", ")}
+                </span>
+              </button>
+            ))}
 
             {selectedPlace && (
-              <p className="rounded-xl bg-green-950 p-3 text-sm text-green-300">
+              <p className="text-sm text-green-400">
                 Selected: {selectedPlace.label}
               </p>
             )}
 
-            <label className="block">
-              <span className="mb-2 block">Venue name (optional)</span>
-              <input
-                value={venue}
-                onChange={(e) => setVenue(e.target.value)}
-                placeholder="Hall, club or venue name"
-                className={inputClass}
-              />
-            </label>
+            <input
+              value={venue}
+              onChange={(e) => setVenue(e.target.value)}
+              placeholder="Venue name (optional)"
+              className={inputClass}
+            />
           </section>
 
-          <section className="space-y-4 rounded-2xl border border-gray-800 bg-neutral-950 p-5">
-            <h2 className="text-xl font-semibold">4. Date and time</h2>
-
-            <label className="block">
-              <span className="mb-2 block">Start date and time *</span>
+          <section className="space-y-3 rounded-2xl border border-gray-800 p-4">
+            <h2 className="font-semibold">Date and time</h2>
+            <label className="block text-sm">
+              Starts *
               <input
                 required
                 type="datetime-local"
@@ -427,115 +490,75 @@ export default function OrganizePage() {
                 className={inputClass}
               />
             </label>
-
-            <label className="block">
-              <span className="mb-2 block">End date and time</span>
+            <label className="block text-sm">
+              Ends
               <input
                 type="datetime-local"
-                value={endsAt}
                 min={startsAt || undefined}
+                value={endsAt}
                 onChange={(e) => setEndsAt(e.target.value)}
                 className={inputClass}
               />
             </label>
           </section>
 
-          <section className="space-y-4 rounded-2xl border border-gray-800 bg-neutral-950 p-5">
-            <h2 className="text-xl font-semibold">5. Tickets and registration</h2>
-
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-700 p-4">
-              <input
-                type="radio"
-                name="ticketMode"
-                checked={ticketMode === "sell"}
-                onChange={() => setTicketMode("sell")}
-                className="mt-1"
-              />
-              <span>
-                <strong className="block">Sell Tickets</strong>
-                <span className="text-sm text-gray-400">
-                  Set ticket price and quantity.
-                </span>
-              </span>
-            </label>
-
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-700 p-4">
-              <input
-                type="radio"
-                name="ticketMode"
-                checked={ticketMode === "rsvp"}
-                onChange={() => setTicketMode("rsvp")}
-                className="mt-1"
-              />
-              <span>
-                <strong className="block">Free RSVP</strong>
-                <span className="text-sm text-gray-400">
-                  Free event registration.
-                </span>
-              </span>
-            </label>
+          <section className="space-y-3 rounded-2xl border border-gray-800 p-4">
+            <h2 className="font-semibold">Tickets</h2>
+            <select
+              value={ticketMode}
+              onChange={(e) => setTicketMode(e.target.value)}
+              className={inputClass}
+            >
+              <option value="rsvp">Free RSVP</option>
+              <option value="sell">Sell Tickets</option>
+            </select>
 
             {ticketMode === "sell" && (
-              <div className="space-y-4 rounded-xl bg-gray-900 p-4">
-                <label className="block">
-                  <span className="mb-2 block">Ticket name *</span>
-                  <input
-                    required
-                    value={ticketName}
-                    onChange={(e) => setTicketName(e.target.value)}
-                    className={inputClass}
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block">Ticket price (INR) *</span>
-                  <input
-                    required
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className={inputClass}
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block">Number of tickets *</span>
-                  <input
-                    required
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    className={inputClass}
-                  />
-                </label>
-
-                <p className="text-sm text-gray-400">
-                  Online payment requires a separate payment integration.
+              <>
+                <input
+                  required
+                  value={ticketName}
+                  onChange={(e) => setTicketName(e.target.value)}
+                  placeholder="Ticket name"
+                  className={inputClass}
+                />
+                <input
+                  required
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="Ticket price (INR)"
+                  className={inputClass}
+                />
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  placeholder="Ticket quantity"
+                  className={inputClass}
+                />
+                <p className="text-xs text-gray-400">
+                  Online payments require a payment provider integration.
                 </p>
-              </div>
+              </>
             )}
           </section>
 
           {error && (
-            <p className="break-words rounded-xl bg-red-950 p-4 text-red-300">
+            <p className="break-words rounded-xl bg-red-950 p-3 text-sm text-red-300">
               {error}
-            </p>
-          )}
-
-          {message && (
-            <p className="rounded-xl bg-green-950 p-4 text-green-300">
-              {message}
             </p>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-blue-600 p-5 text-lg font-bold text-white disabled:opacity-50"
+            className="w-full rounded-xl bg-blue-600 p-4 font-bold disabled:opacity-50"
           >
             {loading ? "Publishing..." : "Publish event"}
           </button>
@@ -544,3 +567,4 @@ export default function OrganizePage() {
     </main>
   );
 }
+
