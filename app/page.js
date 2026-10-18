@@ -1,32 +1,56 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser as supabase } from "../lib/supabase";
+
+const categories = [
+  { name: "Music", icon: "♫", color: "#ffe8f1" },
+  { name: "Nightlife", icon: "🍸", color: "#f0e8ff" },
+  { name: "Parties", icon: "🎉", color: "#fff0e8" },
+  { name: "Festivals", icon: "🎪", color: "#fff5dc" },
+  { name: "Food & Drink", icon: "🍴", color: "#e6f5ff" },
+  { name: "Sports", icon: "🏀", color: "#ffece7" },
+  { name: "Arts & Culture", icon: "🎨", color: "#f3eaff" },
+  { name: "Business", icon: "💼", color: "#ecebff" },
+  { name: "Wellness", icon: "🌿", color: "#e5f8ed" },
+  { name: "Comedy", icon: "☻", color: "#fff4d9" },
+  { name: "Community", icon: "♟", color: "#e6f4ff" },
+  { name: "Other", icon: "•••", color: "#f0f1f5" },
+];
+
+const fallbackImages = [
+  "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=900&q=80",
+  "https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?auto=format&fit=crop&w=900&q=80",
+  "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=900&q=80",
+  "https://images.unsplash.com/photo-1524368535928-5b5e00ddc76b?auto=format&fit=crop&w=900&q=80",
+  "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=900&q=80",
+];
 
 export default function HomePage() {
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [events, setEvents] = useState([]);
-  const [eventsLoading, setEventsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [city, setCity] = useState("");
-  const [eventError, setEventError] = useState("");
+  const [category, setCategory] = useState("");
+  const [dateFilter, setDateFilter] = useState("any");
+  const [favorites, setFavorites] = useState([]);
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     let active = true;
 
-    async function loadSession() {
+    async function getSession() {
       const { data, error } = await supabase.auth.getSession();
-
       if (!active) return;
-
       if (!error) setSession(data.session);
       setAuthReady(true);
     }
 
-    loadSession();
+    getSession();
 
     const {
       data: { subscription },
@@ -42,9 +66,11 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+
     async function loadEvents() {
-      setEventsLoading(true);
-      setEventError("");
+      setLoading(true);
+      setError("");
 
       const { data, error } = await supabase
         .from("events")
@@ -53,46 +79,109 @@ export default function HomePage() {
         )
         .eq("status", "published")
         .order("starts_at", { ascending: true })
-        .limit(50);
+        .limit(100);
+
+      if (!active) return;
 
       if (error) {
-        setEventError("Events could not be loaded right now.");
+        setError("Events could not be loaded. Please try again later.");
         setEvents([]);
       } else {
         setEvents(data || []);
       }
 
-      setEventsLoading(false);
+      setLoading(false);
     }
 
     loadEvents();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const filteredEvents = events.filter((event) => {
-    const term = search.trim().toLowerCase();
-    const eventCity = (event.city || "").toLowerCase();
+  const filteredEvents = useMemo(() => {
+    const now = new Date();
+    const today = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
 
-    const matchesSearch =
-      !term ||
-      [
-        event.title,
-        event.description,
-        event.category,
-        event.city,
-        event.venue,
-      ]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(term));
+    return events.filter((event) => {
+      const term = search.trim().toLowerCase();
+      const eventCategory = (event.category || "Other").toLowerCase();
 
-    const matchesCity =
-      !city.trim() || eventCity.includes(city.trim().toLowerCase());
+      const matchesSearch =
+        !term ||
+        [
+          event.title,
+          event.description,
+          event.category,
+          event.city,
+          event.country,
+          event.venue,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(term));
 
-    return matchesSearch && matchesCity;
-  });
+      const matchesCity =
+        !city.trim() ||
+        [event.city, event.country]
+          .filter(Boolean)
+          .join(", ")
+          .toLowerCase()
+          .includes(city.trim().toLowerCase());
+
+      const matchesCategory =
+        !category ||
+        eventCategory.includes(category.toLowerCase()) ||
+        (category === "Food & Drink" &&
+          /food|drink|restaurant/i.test(eventCategory)) ||
+        (category === "Arts & Culture" &&
+          /art|culture/i.test(eventCategory));
+
+      const eventDate = event.starts_at
+        ? new Date(event.starts_at)
+        : null;
+
+      let matchesDate = true;
+
+      if (dateFilter === "today") {
+        matchesDate =
+          eventDate &&
+          eventDate >= today &&
+          eventDate < new Date(today.getTime() + 86400000);
+      }
+
+      if (dateFilter === "weekend") {
+        const day = today.getDay();
+        const daysUntilSaturday = (6 - day + 7) % 7;
+        const saturday = new Date(today);
+        saturday.setDate(today.getDate() + daysUntilSaturday);
+
+        const monday = new Date(saturday);
+        monday.setDate(saturday.getDate() + 2);
+
+        matchesDate =
+          eventDate && eventDate >= saturday && eventDate < monday;
+      }
+
+      if (dateFilter === "upcoming") {
+        matchesDate = eventDate && eventDate >= today;
+      }
+
+      return (
+        matchesSearch &&
+        matchesCity &&
+        matchesCategory &&
+        matchesDate
+      );
+    });
+  }, [events, search, city, category, dateFilter]);
 
   async function handleLogout() {
     setLoggingOut(true);
-
     const { error } = await supabase.auth.signOut();
 
     if (error) {
@@ -101,523 +190,390 @@ export default function HomePage() {
       return;
     }
 
-    setSession(null);
     window.location.href = "/";
   }
 
   function formatDate(value) {
-    if (!value) return "Date to be announced";
+    if (!value) return { month: "TBA", day: "—", full: "Date to be announced" };
 
     const date = new Date(value);
 
-    if (Number.isNaN(date.getTime())) return "Date to be announced";
+    if (Number.isNaN(date.getTime())) {
+      return { month: "TBA", day: "—", full: "Date to be announced" };
+    }
 
-    return date.toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
+    return {
+      month: date.toLocaleDateString("en-US", { month: "short" }).toUpperCase(),
+      day: date.toLocaleDateString("en-US", { day: "2-digit" }),
+      full: date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    };
+  }
+
+  function toggleFavorite(id) {
+    setFavorites((previous) =>
+      previous.includes(id)
+        ? previous.filter((item) => item !== id)
+        : [...previous, id]
+    );
+  }
+
+  function resetFilters() {
+    setSearch("");
+    setCity("");
+    setCategory("");
+    setDateFilter("any");
   }
 
   return (
-    <main style={styles.page}>
-      <header style={styles.navbar}>
-        <a href="/" style={styles.brand}>
-          VYBE
-        </a>
+    <main className="vybe">
+      <header className="vybe-nav">
+        <a className="vybe-logo" href="/">VYBE</a>
 
-        <nav style={styles.navLinks}>
-          <a href="#discover" style={styles.navLink}>
-            Discover
-          </a>
+        <nav className="vybe-nav-links">
+          <a className="vybe-nav-active" href="/">⌂ <span>Home</span></a>
+          <a href="#trending">Explore Events</a>
 
-  {session ? (
-  <button onClick={handleLogout} style={styles.navButton}>
-    Log out
-  </button>
-) : (
-  <a href="/auth" style={styles.navLink}>
-    Sign in
-  </a>
-)}
-          
+          <a href="#categories">Categories⌄</a>
+          <a href="/organize">♧ Create Event</a>
+          {session && <a href="#my-events">My Events</a>}
+        </nav>
+
+        <div className="vybe-nav-right">
+          <label className="vybe-location">
+            <span>📍</span>
+            <input
+              aria-label="Location"
+              placeholder="Any location"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+            />
+          </label>
+
+          <button
+            className="vybe-icon-button"
+            aria-label="Focus search"
+            onClick={() =>
+              document.getElementById("event-search")?.focus()
+            }
+          >
+            ⌕
+          </button>
+
+          <a className="vybe-create" href="/organize">Create Event</a>
 
           {!authReady ? (
-            <span style={styles.navLink}>Loading...</span>
+            <span className="vybe-account">…</span>
           ) : session ? (
             <button
+              className="vybe-account"
               onClick={handleLogout}
               disabled={loggingOut}
-              style={styles.navButton}
+              title="Log out"
             >
-              {loggingOut ? "Logging out..." : "Log out"}
+              {loggingOut ? "…" : "↪"}
             </button>
           ) : (
-            <a href="/auth" style={styles.navLink}>
-              Sign in
-            </a>
+            <a className="vybe-account" href="/auth" title="Sign in">↗</a>
           )}
-        </nav>
+        </div>
       </header>
 
-      <section style={styles.hero}>
-        <div style={styles.heroActions}>
-          <a href="/" style={styles.heroLogo}>
-            VYBE<span style={{ color: "#946cff" }}>.</span>
-          </a>
+      <section className="vybe-hero">
+        <div className="vybe-hero-copy">
+          <div className="vybe-kicker">DISCOVER · ATTEND · CREATE</div>
 
-          {!authReady ? (
-            <span style={styles.loginButton}>Loading...</span>
-          ) : session ? (
-            <div style={styles.accountBox}>
-              <span style={styles.accountText}>
-                {session.user?.email || "Account"}
-              </span>
-              <button
-                onClick={handleLogout}
-                disabled={loggingOut}
-                style={styles.loginButton}
-              >
-                {loggingOut ? "..." : "Log out"}
-              </button>
-            </div>
-          ) : (
-            <a href="/auth" style={styles.loginButton}>
-              Log in
-            </a>
-          )}
-
-          <a href="/organize" style={styles.createButton}>
-            Create event
-          </a>
-        </div>
-
-        <div style={styles.heroContent}>
-          <div style={styles.eyebrow}>
-            ✦ DISCOVER MORE. EXPERIENCE EVERYTHING.
-          </div>
-
-          <h1 style={styles.title}>
-            Find your
+          <h1>
+            Find Your Next
             <br />
-            people.
-            <br />
-            <span style={styles.purpleText}>Feel the</span>
-            <br />
-            <span style={styles.purpleText}>moment.</span>
+            <span>Great Experience</span>
           </h1>
 
-          <p style={styles.description}>
-            Discover events, meet new people, and find something worth going
-            out for. Your next experience starts here.
+          <p>
+            Explore the best events, parties, concerts, festivals,
+            and more happening around the world.
           </p>
 
           <form
-            style={styles.searchBox}
+            className="vybe-search"
             onSubmit={(e) => {
               e.preventDefault();
               document
-                .getElementById("discover")
+                .getElementById("trending")
                 ?.scrollIntoView({ behavior: "smooth" });
             }}
           >
-            <input
-              type="search"
-              placeholder="Search events, music, meetups..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={styles.searchInput}
-            />
+            <label className="vybe-search-term">
+              <span>⌕</span>
+              <input
+                id="event-search"
+                placeholder="Search events, artists, or venues..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
 
-            <input
-              type="text"
-              placeholder="Enter city"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              style={styles.searchInput}
-            />
+            <label className="vybe-search-city">
+              <span>♧</span>
+              <input
+                aria-label="Search city"
+                placeholder="Any location"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+              />
+            </label>
 
-            <button type="submit" style={styles.searchButton}>
-              Find events
+            <select
+              aria-label="Event date"
+              className="vybe-date-select"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+            >
+              <option value="any">Any date</option>
+              <option value="today">Today</option>
+              <option value="weekend">This weekend</option>
+              <option value="upcoming">Upcoming</option>
+            </select>
+
+            <button className="vybe-search-button" type="submit">
+              Search
             </button>
           </form>
+
+          <div className="vybe-popular">
+            <span>Popular:</span>
+            <button onClick={() => setDateFilter("today")}>Tonight</button>
+            <button onClick={() => setDateFilter("weekend")}>This Weekend</button>
+            <button onClick={() => setCategory("Music")}>Music</button>
+            <button onClick={() => setCategory("Nightlife")}>Nightlife</button>
+            <button onClick={() => setDateFilter("upcoming")}>Upcoming Events</button>
+            <button onClick={() => setCategory("")}>All Events</button>
+          </div>
+        </div>
+
+        <div className="vybe-hero-visual">
+          <img
+            className="vybe-hero-main-image"
+            src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=85"
+            alt="People enjoying a live music event"
+          />
+
+          <div className="vybe-hero-overlay">
+            <span>Good Events.</span>
+            <strong>Better People.</strong>
+          </div>
+
+          <a
+            href="#trending"
+            className="vybe-feature-tile vybe-tile-one"
+          >
+            <img src={fallbackImages[0]} alt="" />
+            <span>Music Events <b>↗</b></span>
+          </a>
+
+          <a
+            href="#categories"
+            className="vybe-feature-tile vybe-tile-two"
+          >
+            <img src={fallbackImages[1]} alt="" />
+            <span>Nightlife <b>↗</b></span>
+          </a>
+
+          <a
+            href="#trending"
+            className="vybe-feature-tile vybe-tile-three"
+          >
+            <img src={fallbackImages[2]} alt="" />
+            <span>Food &amp; Drink <b>↗</b></span>
+          </a>
         </div>
       </section>
 
-      <section id="discover" style={styles.eventsSection}>
-        <div style={styles.sectionHeading}>
-          <div>
-            <p style={styles.sectionEyebrow}>EXPLORE YOUR WORLD</p>
-            <h2 style={styles.sectionTitle}>Discover events</h2>
-          </div>
-          <span style={styles.eventCount}>{filteredEvents.length} events</span>
+      <section id="categories" className="vybe-section vybe-categories-section">
+        <div className="vybe-section-title-row">
+          <h2>Popular Categories</h2>
+          <button className="vybe-view-link" onClick={() => setCategory("")}>
+            View All →
+          </button>
         </div>
 
-        {eventsLoading ? (
-          <p style={styles.muted}>Finding events for you...</p>
-        ) : eventError ? (
-          <p style={styles.muted}>{eventError}</p>
+        <div className="vybe-category-grid">
+          {categories.map((item) => (
+            <button
+              key={item.name}
+              className={`vybe-category ${
+                category === item.name ? "is-selected" : ""
+              }`}
+              style={{ "--category-bg": item.color }}
+              onClick={() =>
+                setCategory((current) =>
+                  current === item.name ? "" : item.name
+                )
+              }
+            >
+              <span>{item.icon}</span>
+              <strong>{item.name}</strong>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section id="trending" className="vybe-section vybe-trending">
+        <div className="vybe-section-title-row">
+          <div>
+            <h2><span className="vybe-fire">♨</span> Trending This Week</h2>
+            <p>The hottest events happening near you and around the world.</p>
+          </div>
+          <button
+            className="vybe-view-link"
+            onClick={resetFilters}
+          >
+            View All Events →
+          </button>
+        </div>
+
+        {(category || search || city || dateFilter !== "any") && (
+          <div className="vybe-filter-status">
+            Showing filtered events
+            <button onClick={resetFilters}>Clear filters ×</button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="vybe-message">Finding great events for you…</div>
+        ) : error ? (
+          <div className="vybe-message">{error}</div>
         ) : filteredEvents.length === 0 ? (
-          <div style={styles.emptyBox}>
-            <div style={styles.emptyIcon}>✦</div>
-            <h3 style={styles.emptyTitle}>Your next moment starts here.</h3>
-            <p style={styles.muted}>
-              No published events match your search yet. Try another search
-              or check back soon.
+          <div className="vybe-empty">
+            <div className="vybe-empty-icon">✦</div>
+            <h3>No events found yet</h3>
+            <p>
+              Try another search or be the first to organize an event.
             </p>
-            <a href="/organize" style={styles.createButton}>
-              Create an event
-            </a>
+            <button className="vybe-create" onClick={resetFilters}>
+              Clear filters
+            </button>{" "}
+            <a className="vybe-create" href="/organize">Create Event</a>
           </div>
         ) : (
-          <div style={styles.eventGrid}>
-            {filteredEvents.map((event) => (
-              <article key={event.id} style={styles.eventCard}>
-                {event.image_url ? (
-                  <img
-                    src={event.image_url}
-                    alt={event.title || "Event"}
-                    style={styles.eventImage}
-                  />
-                ) : (
-                  <div style={styles.eventImagePlaceholder}>VYBE ✦</div>
-                )}
+          <div className="vybe-event-grid">
+            {filteredEvents.map((event, index) => {
+              const date = formatDate(event.starts_at);
+              const isFree =
+                event.price === 0 ||
+                event.price === "0" ||
+                event.price == null ||
+                event.price === "";
 
-                <div style={styles.eventBody}>
-                  <span style={styles.category}>
-                    {event.category || "Community"}
-                  </span>
+              const image =
+                event.image_url || fallbackImages[index % fallbackImages.length];
 
-                  <h3 style={styles.eventTitle}>
-                    {event.title || "Untitled event"}
-                  </h3>
-
-                  <p style={styles.eventMeta}>
-                    {formatDate(event.starts_at)}
-                  </p>
-
-                  <p style={styles.eventMeta}>
-                    {[event.city, event.country].filter(Boolean).join(", ") ||
-                      "Location to be announced"}
-                  </p>
-
-                  {event.description && (
-                    <p style={styles.eventDescription}>
-                      {event.description}
-                    </p>
-                  )}
-
-                  <p style={styles.eventPrice}>
-                    {event.price == null || event.price === ""
-                      ? "Price to be announced"
-                      : Number(event.price) === 0
-                        ? "Free"
-                        : `${event.currency || "₹"} ${event.price}`}
-                  </p>
-
+              return (
+                <article className="vybe-event-card" key={event.id}>
                   <a
+                    className="vybe-event-image-wrap"
                     href={
                       event.slug
                         ? `/events/${encodeURIComponent(event.slug)}`
-                        : "/auth"
+                        : "#trending"
                     }
-                    style={styles.eventLink}
                   >
-                    View event →
+                    <img
+                      className="vybe-event-image"
+                      src={image}
+                      alt={event.title || "Event flyer"}
+                    />
+
+                    <span className="vybe-event-badge">
+                      {isFree ? "✦ Free RSVP" : index % 2 === 0 ? "★ Featured" : "✦ Popular"}
+                    </span>
+
+                    <span className="vybe-date-badge">
+                      <small>{date.month}</small>
+                      <strong>{date.day}</strong>
+                    </span>
                   </a>
-                </div>
-              </article>
-            ))}
+
+                  <button
+                    className={`vybe-favorite ${
+                      favorites.includes(event.id) ? "is-favorite" : ""
+                    }`}
+                    onClick={() => toggleFavorite(event.id)}
+                    aria-label="Toggle favorite"
+                  >
+                    {favorites.includes(event.id) ? "♥" : "♡"}
+                  </button>
+
+                  <div className="vybe-event-info">
+                    <a
+                      className="vybe-event-title"
+                      href={
+                        event.slug
+                          ? `/events/${encodeURIComponent(event.slug)}`
+                          : "#trending"
+                      }
+                    >
+                      {event.title || "Untitled event"}
+                    </a>
+
+                    <p className="vybe-event-location">
+                      📍{" "}
+                      {[
+                        event.venue,
+                        event.city,
+                        event.country,
+                      ].filter(Boolean).join(", ") || "Location to be announced"}
+                    </p>
+
+                    <div className="vybe-event-bottom">
+                      <span className="vybe-event-category">
+                        {event.category || "Community"}
+                      </span>
+                      <span className="vybe-event-price">
+                        {isFree
+                          ? "Free"
+                          : `${event.currency || "₹"}${event.price}`}
+                      </span>
+                    </div>
+
+                    <div className="vybe-event-footer">
+                      <span>{date.full}</span>
+                      <a
+                        href={
+                          event.slug
+                            ? `/events/${encodeURIComponent(event.slug)}`
+                            : "#trending"
+                        }
+                      >
+                        Details →
+                      </a>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
 
-      <footer style={styles.footer}>
-        <a href="/" style={styles.brand}>
-          VYBE
-        </a>
-        <p style={styles.muted}>Your city. Your people. Your VYBE.</p>
+      <footer className="vybe-footer">
+        <a className="vybe-logo" href="/">VYBE</a>
+        <p>Your city. Your people. Your VYBE.</p>
+        <div>
+          <a href="/">Discover</a>
+          <a href="/organize">Organize an event</a>
+          <a href="/auth">{session ? "Account" : "Sign in"}</a>
+          {session && (
+            <button onClick={handleLogout} disabled={loggingOut}>
+              {loggingOut ? "Logging out…" : "Log out"}
+            </button>
+          )}
+        </div>
+        <small>© {new Date().getFullYear()} VYBE. All rights reserved.</small>
       </footer>
     </main>
   );
 }
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#fffffffff",
-    color: "#241b38",
-    fontFamily: "Arial, Helvetica, sans-serif",
-  },
-  navbar: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "24px 6%",
-    borderBottom: "1px solid #eee8f7",
-    flexWrap: "wrap",
-  },
-  brand: {
-    color: "#ffffff",
-    fontSize: 36,
-    fontWeight: 900,
-    textDecoration: "none",
-    letterSpacing: "-2px",
-  },
-  navLinks: {
-    display: "flex",
-    alignItems: "center",
-    gap: 18,
-    flexWrap: "wrap",
-  },
-  navLink: {
-    color: "#746b85",
-    textDecoration: "none",
-    fontSize: 15,
-  },
-  navButton: {
-    color: "#7953e8",
-    background: "transparent",
-    border: "none",
-    fontSize: 15,
-    cursor: "pointer",
-  },
-  hero: {
-    maxWidth: 1100,
-    margin: "0 auto",
-    padding: "16px 5% 72px",
-  },
-  heroActions: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 14,
-    flexWrap: "wrap",
-    padding: "0 0 22px",
-    borderBottom: "1px solid #eee8f7",
-  },
-  heroLogo: {
-    color: "#ffffff",
-    fontSize: 36,
-    fontWeight: 900,
-    letterSpacing: "-2px",
-    textDecoration: "none",
-  },
-  accountBox: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-  accountText: {
-    color: "#7953e8",
-    fontSize: 13,
-    maxWidth: 180,
-    overflowWrap: "anywhere",
-  },
-  loginButton: {
-    display: "inline-block",
-    padding: "15px 22px",
-    borderRadius: 40,
-    border: "1px solid #e5dcef",
-    background: "#f8f5ff",
-    color: "#ffffff",
-    textDecoration: "none",
-    fontSize: 15,
-    cursor: "pointer",
-  },
-  createButton: {
-    display: "inline-block",
-    padding: "17px 24px",
-    borderRadius: 40,
-    background: "#7953e8",
-    color: "#ffffff",
-    textDecoration: "none",
-    fontWeight: 700,
-    border: "none",
-    cursor: "pointer",
-  },
-  heroContent: {
-    maxWidth: 700,
-    margin: "80px auto 0",
-  },
-  eyebrow: {
-    display: "inline-block",
-    padding: "12px 18px",
-    borderRadius: 40,
-    border: "1px solid #e5d8ff",
-    background: "#f4edff",
-    color: "#7953e8",
-    fontSize: 13,
-    letterSpacing: 0.5,
-  },
-  title: {
-    fontSize: "clamp(48px, 9vw, 88px)",
-    lineHeight: 1.02,
-    letterSpacing: "-4px",
-    margin: "48px 0 24px",
-    fontWeight: 900,
-  },
-  purpleText: {
-    color: "#946cff",
-  },
-  description: {
-    color: "#756d88",
-    fontSize: 20,
-    lineHeight: 1.8,
-    maxWidth: 600,
-  },
-  searchBox: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    padding: 18,
-    marginTop: 42,
-    border: "1px solid #eee8f7",
-    borderRadius: 24,
-    background: "#ffffff",
-  },
-  searchInput: {
-    width: "100%",
-    boxSizing: "border-box",
-    border: "1px solid #e4dced",
-    borderRadius: 12,
-    background: "#ffffff",
-    color: "#ffffff",
-    padding: 17,
-    fontSize: 16,
-    outlineColor: "#946cff",
-  },
-  searchButton: {
-    border: "none",
-    borderRadius: 12,
-    background: "#7953e8",
-    color: "#ffffff",
-    padding: 17,
-    fontSize: 16,
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-  eventsSection: {
-    maxWidth: 1100,
-    margin: "0 auto",
-    padding: "40px 5% 90px",
-  },
-  sectionHeading: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "end",
-    gap: 12,
-    flexWrap: "wrap",
-    marginBottom: 30,
-  },
-  sectionEyebrow: {
-    color: "#b79aff",
-    fontSize: 12,
-    letterSpacing: 2,
-    fontWeight: 700,
-  },
-  sectionTitle: {
-    fontSize: 34,
-    margin: "8px 0",
-    letterSpacing: "-1px",
-  },
-  eventCount: {
-    color: "#7953e8",
-    fontSize: 14,
-  },
-  eventGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
-    gap: 20,
-  },
-  eventCard: {
-    border: "1px solid #eee8f7",
-    borderRadius: 20,
-    overflow: "hidden",
-    background: "#faf7ff",
-    minWidth: 0,
-  },
-  eventImage: {
-    display: "block",
-    width: "100%",
-    height: 190,
-    objectFit: "cover",
-    background: "#eee8f702e",
-  },
-  eventImagePlaceholder: {
-    height: 190,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "linear-gradient(135deg, #22163c, #101018)",
-    color: "#7953e8",
-    fontSize: 28,
-    fontWeight: 900,
-  },
-  eventBody: {
-    padding: 20,
-  },
-  category: {
-    color: "#7953e8",
-    fontSize: 12,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  eventTitle: {
-    fontSize: 21,
-    lineHeight: 1.3,
-    margin: "12px 0",
-    overflowWrap: "anywhere",
-  },
-  eventMeta: {
-    color: "#756d88",
-    fontSize: 14,
-    lineHeight: 1.6,
-  },
-  eventDescription: {
-    color: "#746b85",
-    fontSize: 14,
-    lineHeight: 1.6,
-    overflowWrap: "anywhere",
-  },
-  eventPrice: {
-    color: "#ffffff",
-    fontWeight: 700,
-    marginTop: 18,
-  },
-  eventLink: {
-    display: "inline-block",
-    marginTop: 8,
-    color: "#7953e8",
-    textDecoration: "none",
-    fontWeight: 700,
-  },
-  emptyBox: {
-    padding: "42px 20px",
-    borderRadius: 20,
-    border: "1px solid #eee8f7",
-    background: "#faf7ff",
-    textAlign: "center",
-  },
-  emptyIcon: {
-    color: "#946cff",
-    fontSize: 38,
-  },
-  emptyTitle: {
-    fontSize: 24,
-  },
-  muted: {
-    color: "#756d88",
-    lineHeight: 1.7,
-  },
-  footer: {
-    borderTop: "1px solid #eee8f7",
-    padding: "32px 6%",
-    textAlign: "center",
-  },
-};
-
-
-
