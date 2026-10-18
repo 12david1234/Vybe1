@@ -368,10 +368,12 @@ export default function OrganizePage() {
       router.push("/events/" + slug);
     } catch (err) {
       setError(err?.message || "Could not publish the event.");
-    } finally {
+       } finally {
       setLoading(false);
     }
-    const input =
+  }
+
+  const input =
     "w-full min-w-0 rounded-xl border border-gray-700 bg-neutral-900 p-3 text-white focus:border-blue-500 focus:outline-none";
 
   const stepNames = ["Tickets", "Flyer", "Event details"];
