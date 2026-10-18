@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabaseBrowser as supabase } from "../lib/supabase";
+import { supabaseBrowser as supabase } from "../../lib/supabase.js";
 
 export default function HomePage() {
   const [session, setSession] = useState(null);
