@@ -163,7 +163,7 @@ export default function HomePage() {
       <section style={styles.hero}>
         <div style={styles.heroActions}>
           <a href="/" style={styles.heroLogo}>
-            VYBE<span style={{ color: "#a78bfa" }}>.</span>
+            VYBE<span style={{ color: "#946cff" }}>.</span>
           </a>
 
           {!authReady ? (
@@ -194,7 +194,7 @@ export default function HomePage() {
 
         <div style={styles.heroContent}>
           <div style={styles.eyebrow}>
-            ✦ YOUR CITY. YOUR PEOPLE. YOUR VYBE.
+            ✦ DISCOVER MORE. EXPERIENCE EVERYTHING.
           </div>
 
           <h1 style={styles.title}>
@@ -345,8 +345,8 @@ export default function HomePage() {
 const styles = {
   page: {
     minHeight: "100vh",
-    background: "#08080b",
-    color: "#f9fafb",
+    background: "#fffffffff",
+    color: "#241b38",
     fontFamily: "Arial, Helvetica, sans-serif",
   },
   navbar: {
@@ -355,11 +355,11 @@ const styles = {
     justifyContent: "space-between",
     gap: 12,
     padding: "24px 6%",
-    borderBottom: "1px solid #24242a",
+    borderBottom: "1px solid #eee8f7",
     flexWrap: "wrap",
   },
   brand: {
-    color: "#fff",
+    color: "#ffffff",
     fontSize: 36,
     fontWeight: 900,
     textDecoration: "none",
@@ -372,12 +372,12 @@ const styles = {
     flexWrap: "wrap",
   },
   navLink: {
-    color: "#c4c4cf",
+    color: "#746b85",
     textDecoration: "none",
     fontSize: 15,
   },
   navButton: {
-    color: "#d6c6ff",
+    color: "#7953e8",
     background: "transparent",
     border: "none",
     fontSize: 15,
@@ -395,10 +395,10 @@ const styles = {
     gap: 14,
     flexWrap: "wrap",
     padding: "0 0 22px",
-    borderBottom: "1px solid #24242a",
+    borderBottom: "1px solid #eee8f7",
   },
   heroLogo: {
-    color: "#fff",
+    color: "#ffffff",
     fontSize: 36,
     fontWeight: 900,
     letterSpacing: "-2px",
@@ -411,7 +411,7 @@ const styles = {
     flexWrap: "wrap",
   },
   accountText: {
-    color: "#c4b5fd",
+    color: "#7953e8",
     fontSize: 13,
     maxWidth: 180,
     overflowWrap: "anywhere",
@@ -420,9 +420,9 @@ const styles = {
     display: "inline-block",
     padding: "15px 22px",
     borderRadius: 40,
-    border: "1px solid #393946",
-    background: "#15151d",
-    color: "#fff",
+    border: "1px solid #e5dcef",
+    background: "#f8f5ff",
+    color: "#ffffff",
     textDecoration: "none",
     fontSize: 15,
     cursor: "pointer",
@@ -431,8 +431,8 @@ const styles = {
     display: "inline-block",
     padding: "17px 24px",
     borderRadius: 40,
-    background: "#8955f6",
-    color: "#fff",
+    background: "#7953e8",
+    color: "#ffffff",
     textDecoration: "none",
     fontWeight: 700,
     border: "none",
@@ -446,9 +446,9 @@ const styles = {
     display: "inline-block",
     padding: "12px 18px",
     borderRadius: 40,
-    border: "1px solid #453450",
-    background: "#17101f",
-    color: "#d9c4ff",
+    border: "1px solid #e5d8ff",
+    background: "#f4edff",
+    color: "#7953e8",
     fontSize: 13,
     letterSpacing: 0.5,
   },
@@ -460,10 +460,10 @@ const styles = {
     fontWeight: 900,
   },
   purpleText: {
-    color: "#a78bfa",
+    color: "#946cff",
   },
   description: {
-    color: "#a4a4b2",
+    color: "#756d88",
     fontSize: 20,
     lineHeight: 1.8,
     maxWidth: 600,
@@ -474,26 +474,26 @@ const styles = {
     gap: 12,
     padding: 18,
     marginTop: 42,
-    border: "1px solid #292934",
+    border: "1px solid #eee8f7",
     borderRadius: 24,
-    background: "#14141c",
+    background: "#ffffff",
   },
   searchInput: {
     width: "100%",
     boxSizing: "border-box",
-    border: "1px solid #343441",
+    border: "1px solid #e4dced",
     borderRadius: 12,
-    background: "#0c0c12",
-    color: "#fff",
+    background: "#ffffff",
+    color: "#ffffff",
     padding: 17,
     fontSize: 16,
-    outlineColor: "#a78bfa",
+    outlineColor: "#946cff",
   },
   searchButton: {
     border: "none",
     borderRadius: 12,
-    background: "#8955f6",
-    color: "#fff",
+    background: "#7953e8",
+    color: "#ffffff",
     padding: 17,
     fontSize: 16,
     fontWeight: 700,
@@ -524,7 +524,7 @@ const styles = {
     letterSpacing: "-1px",
   },
   eventCount: {
-    color: "#c4b5fd",
+    color: "#7953e8",
     fontSize: 14,
   },
   eventGrid: {
@@ -533,10 +533,10 @@ const styles = {
     gap: 20,
   },
   eventCard: {
-    border: "1px solid #292934",
+    border: "1px solid #eee8f7",
     borderRadius: 20,
     overflow: "hidden",
-    background: "#13131b",
+    background: "#faf7ff",
     minWidth: 0,
   },
   eventImage: {
@@ -544,7 +544,7 @@ const styles = {
     width: "100%",
     height: 190,
     objectFit: "cover",
-    background: "#22202e",
+    background: "#eee8f702e",
   },
   eventImagePlaceholder: {
     height: 190,
@@ -552,7 +552,7 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     background: "linear-gradient(135deg, #22163c, #101018)",
-    color: "#c4b5fd",
+    color: "#7953e8",
     fontSize: 28,
     fontWeight: 900,
   },
@@ -560,7 +560,7 @@ const styles = {
     padding: 20,
   },
   category: {
-    color: "#c4b5fd",
+    color: "#7953e8",
     fontSize: 12,
     textTransform: "uppercase",
     letterSpacing: 1,
@@ -572,50 +572,52 @@ const styles = {
     overflowWrap: "anywhere",
   },
   eventMeta: {
-    color: "#a4a4b2",
+    color: "#756d88",
     fontSize: 14,
     lineHeight: 1.6,
   },
   eventDescription: {
-    color: "#c4c4cf",
+    color: "#746b85",
     fontSize: 14,
     lineHeight: 1.6,
     overflowWrap: "anywhere",
   },
   eventPrice: {
-    color: "#fff",
+    color: "#ffffff",
     fontWeight: 700,
     marginTop: 18,
   },
   eventLink: {
     display: "inline-block",
     marginTop: 8,
-    color: "#c4b5fd",
+    color: "#7953e8",
     textDecoration: "none",
     fontWeight: 700,
   },
   emptyBox: {
     padding: "42px 20px",
     borderRadius: 20,
-    border: "1px solid #292934",
-    background: "#13131b",
+    border: "1px solid #eee8f7",
+    background: "#faf7ff",
     textAlign: "center",
   },
   emptyIcon: {
-    color: "#a78bfa",
+    color: "#946cff",
     fontSize: 38,
   },
   emptyTitle: {
     fontSize: 24,
   },
   muted: {
-    color: "#a4a4b2",
+    color: "#756d88",
     lineHeight: 1.7,
   },
   footer: {
-    borderTop: "1px solid #24242a",
+    borderTop: "1px solid #eee8f7",
     padding: "32px 6%",
     textAlign: "center",
   },
 };
+
+
 
