@@ -26,7 +26,8 @@ create table if not exists public.tickets (
   buyer_id uuid references auth.users(id) on delete set null,
   buyer_name text not null,
   buyer_email text not null,
-  qr_token text unique not null default encode(gen_random_bytes(16), 'hex'),
+  qr_token text unique not null
+    default encode(gen_random_bytes(16), 'hex'),
   created_at timestamptz default now()
 );
 
