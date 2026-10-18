@@ -1,622 +1,868 @@
-
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabaseBrowser as supabase } from "../../lib/supabase.js";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabaseBrowser as supabase } from "../../lib/supabase";
 
-export default function HomePage() {
-  const [session, setSession] = useState(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [events, setEvents] = useState([]);
-  const [eventsLoading, setEventsLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [city, setCity] = useState("");
-  const [eventError, setEventError] = useState("");
-  const [loggingOut, setLoggingOut] = useState(false);
+const BUCKET = "event-flyers";
+
+const FLYERS = [
+  {
+    name: "Party",
+    category: "Nightlife",
+    image:
+      "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=900&q=85",
+  },
+  {
+    name: "Music",
+    category: "Music",
+    image:
+      "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=85",
+  },
+  {
+    name: "Sports",
+    category: "Sports",
+    image:
+      "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=900&q=85",
+  },
+];
+
+const CATEGORIES = [
+  "Music",
+  "Nightlife",
+  "Sports",
+  "Business",
+  "Education",
+  "Food & Drink",
+  "Arts & Culture",
+  "Community",
+  "Other",
+];
+
+export default function OrganizePage() {
+  const router = useRouter();
+  const fileInput = useRef(null);
+
+  const [step, setStep] = useState(1);
+  const [flyer, setFlyer] = useState(null);
+  const [preview, setPreview] = useState("");
+  const [template, setTemplate] = useState("");
+  const [flyerTemplates, setFlyerTemplates] = useState(FLYERS);
+  const [flyerSearch, setFlyerSearch] = useState("");
+  const [flyerCategory, setFlyerCategory] = useState("All");
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+
+  const [address, setAddress] = useState("");
+  const [places, setPlaces] = useState([]);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [venue, setVenue] = useState("");
+
+  const [category, setCategory] = useState("Music");
+  const [startsAt, setStartsAt] = useState("");
+  const [endsAt, setEndsAt] = useState("");
+
+  const [ticketMode, setTicketMode] = useState("rsvp");
+  const [ticketName, setTicketName] =
+    useState("General Admission");
+  const [price, setPrice] = useState("0");
+  const [quantity, setQuantity] = useState("100");
+
+  const [organizationName, setOrganizationName] = useState("");
+  const [organization, setOrganization] = useState(null);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
 
-    async function loadSession() {
-      const { data, error } = await supabase.auth.getSession();
+    async function loadFlyerTemplates() {
+      setTemplatesLoading(true);
+      const allTemplates = [...FLYERS];
+      const pageSize = 100;
+      let offset = 0;
 
-      if (!active) return;
+      try {
+        // Add any number of template images to event-flyers/templates in Supabase Storage.
+        // Pagination avoids a hard-coded gallery/template limit.
+        while (true) {
+          const { data, error } = await supabase.storage
+            .from(BUCKET)
+            .list("templates", {
+              limit: pageSize,
+              offset,
+              sortBy: { column: "name", order: "asc" },
+            });
 
-      if (!error) setSession(data.session);
-      setAuthReady(true);
+          if (error || !data?.length) break;
+
+          for (const item of data) {
+            if (!item.name || item.name.startsWith(".")) continue;
+            const ext = item.name.split(".").pop()?.toLowerCase();
+            if (!["jpg", "jpeg", "png", "webp", "avif"].includes(ext)) continue;
+            const path = `templates/${item.name}`;
+            const { data: publicData } = supabase.storage.from(BUCKET).getPublicUrl(path);
+            const baseName = item.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ");
+            const categoryName = CATEGORIES.find((c) => baseName.toLowerCase().includes(c.toLowerCase().replace(/ & /g, " "))) || "Other";
+            if (!allTemplates.some((t) => t.image === publicData.publicUrl)) {
+              allTemplates.push({ name: baseName || item.name, category: categoryName, image: publicData.publicUrl, storageTemplate: true });
+            }
+          }
+
+          if (data.length < pageSize) break;
+          offset += pageSize;
+        }
+      } catch (e) {
+        // Keep the built-in templates usable even if storage listing is not permitted.
+      }
+
+      if (active) {
+        setFlyerTemplates(allTemplates);
+        setTemplatesLoading(false);
+      }
     }
 
-    loadSession();
+    loadFlyerTemplates();
+    return () => { active = false; };
+  }, []);
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      setAuthReady(true);
-    });
+  useEffect(() => {
+    let active = true;
+
+    async function loadOrganization() {
+      const { data: sessionData } =
+        await supabase.auth.getSession();
+
+      const user = sessionData?.session?.user;
+
+      if (!user || !active) return;
+
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("id, name, slug")
+        .eq("owner_id", user.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data && active) {
+        setOrganization(data);
+        setOrganizationName(data.name);
+      }
+    }
+
+    loadOrganization();
 
     return () => {
       active = false;
-      subscription.unsubscribe();
     };
   }, []);
 
   useEffect(() => {
-    async function loadEvents() {
-      setEventsLoading(true);
-      setEventError("");
-
-      const { data, error } = await supabase
-        .from("events")
-        .select(
-          "id,title,description,starts_at,city,country,venue,category,price,currency,image_url,slug,status"
-        )
-        .eq("status", "published")
-        .order("starts_at", { ascending: true })
-        .limit(50);
-
-      if (error) {
-        setEventError("Events could not be loaded right now.");
-        setEvents([]);
-      } else {
-        setEvents(data || []);
-      }
-
-      setEventsLoading(false);
-    }
-
-    loadEvents();
-  }, []);
-
-  const filteredEvents = events.filter((event) => {
-    const term = search.trim().toLowerCase();
-    const eventCity = (event.city || "").toLowerCase();
-
-    const matchesSearch =
-      !term ||
-      [
-        event.title,
-        event.description,
-        event.category,
-        event.city,
-        event.venue,
-      ]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(term));
-
-    const matchesCity =
-      !city.trim() || eventCity.includes(city.trim().toLowerCase());
-
-    return matchesSearch && matchesCity;
-  });
-
-  async function handleLogout() {
-    setLoggingOut(true);
-
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      alert(error.message);
-      setLoggingOut(false);
+    if (address.trim().length < 3 || selectedPlace) {
+      setPlaces([]);
       return;
     }
 
-    setSession(null);
-    window.location.href = "/";
+    const controller = new AbortController();
+
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(
+          "https://photon.komoot.io/api/?limit=6&q=" +
+            encodeURIComponent(address),
+          { signal: controller.signal }
+        );
+
+        if (!response.ok) return;
+
+        const result = await response.json();
+        setPlaces(result.features || []);
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          setPlaces([]);
+        }
+      }
+    }, 450);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [address, selectedPlace]);
+
+  function selectTemplate(item) {
+    setTemplate(item.name);
+    setCategory(item.category);
+    setFlyer(null);
+    setPreview(item.image);
+    setError("");
   }
 
-  function formatDate(value) {
-    if (!value) return "Date to be announced";
+  function handleFlyer(event) {
+    const file = event.target.files?.[0];
 
-    const date = new Date(value);
+    if (!file) return;
 
-    if (Number.isNaN(date.getTime())) return "Date to be announced";
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image.");
+      event.target.value = "";
+      return;
+    }
 
-    return date.toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image must be smaller than 5 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    setFlyer(file);
+    setTemplate("");
+    setPreview(URL.createObjectURL(file));
+    setError("");
+  }
+
+  function choosePlace(place) {
+    const p = place.properties || {};
+    const coords = place.geometry?.coordinates || [];
+
+    const city =
+      p.city || p.town || p.village || p.county || "";
+
+    const label = [
+      p.name,
+      p.street,
+      p.housenumber,
+      city,
+      p.state,
+      p.country,
+    ]
+      .filter(Boolean)
+      .filter((value, index, arr) =>
+        arr.indexOf(value) === index
+      )
+      .join(", ");
+
+    setSelectedPlace({
+      label,
+      city,
+      country: p.country || "",
+      latitude: coords[1] ?? null,
+      longitude: coords[0] ?? null,
     });
+
+    setAddress(label);
+    setPlaces([]);
   }
+    async function publishEvent(e) {
+    e.preventDefault();
+    setError("");
+
+    if (!preview) {
+      setStep(2);
+      return setError("Choose a flyer or upload a photo.");
+    }
+
+    if (!title.trim() || !description.trim()) {
+      return setError("Enter event title and description.");
+    }
+
+    if (!selectedPlace) {
+      return setError("Search for a location and select a suggestion.");
+    }
+
+    if (!startsAt || new Date(startsAt) <= new Date()) {
+      return setError("Choose a future start date and time.");
+    }
+
+    if (endsAt && new Date(endsAt) <= new Date(startsAt)) {
+      return setError("End time must be after start time.");
+    }
+
+    if (
+      ticketMode === "sell" &&
+      (!ticketName.trim() ||
+        !Number.isFinite(Number(price)) ||
+        Number(price) < 0 ||
+        !Number.isInteger(Number(quantity)) ||
+        Number(quantity) < 1)
+    ) {
+      return setError("Check ticket name, price, and quantity.");
+    }
+
+    setLoading(true);
+
+    try {
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession();
+
+      if (sessionError) throw sessionError;
+
+      const user = sessionData?.session?.user;
+
+      if (!user) {
+        router.push("/auth");
+        return;
+      }
+
+      let org = organization;
+
+      if (!org) {
+        const name = organizationName.trim();
+
+        if (!name) {
+          setStep(1);
+          throw new Error("Enter your organization name first.");
+        }
+
+        const base =
+          name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "") || "organization";
+
+        const { data, error: orgError } = await supabase
+          .from("organizations")
+          .insert({
+            owner_id: user.id,
+            name,
+            slug: base + "-" + Date.now().toString(36),
+          })
+          .select("id, name, slug")
+          .single();
+
+        if (orgError) {
+          throw new Error("Organization: " + orgError.message);
+        }
+
+        org = data;
+        setOrganization(data);
+      }
+
+      let imageUrl = preview;
+
+      if (flyer) {
+        const safe = flyer.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+        const path = `${user.id}/${Date.now()}-${safe}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from(BUCKET)
+          .upload(path, flyer, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: flyer.type,
+          });
+
+        if (uploadError) {
+          throw new Error("Flyer upload: " + uploadError.message);
+        }
+
+        imageUrl = supabase.storage
+          .from(BUCKET)
+          .getPublicUrl(path).data.publicUrl;
+      }
+
+      const base =
+        title.trim().toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 55) || "event";
+
+      const slug = base + "-" + Date.now().toString(36);
+
+      const { data: savedEvent, error: saveError } = await supabase
+        .from("events")
+        .insert({
+          title: title.trim(),
+          description: description.trim(),
+          venue: venue.trim() || selectedPlace.label,
+          city: selectedPlace.city || null,
+          country: selectedPlace.country || null,
+          location_address: selectedPlace.label,
+          latitude: selectedPlace.latitude,
+          longitude: selectedPlace.longitude,
+          category,
+          starts_at: new Date(startsAt).toISOString(),
+          ends_at: endsAt
+            ? new Date(endsAt).toISOString()
+            : null,
+          ticket_mode: ticketMode,
+          price: ticketMode === "sell" ? Number(price) : 0,
+          currency: "INR",
+          image_url: imageUrl,
+          slug,
+          status: "published",
+          organizer_id: user.id,
+          organization_id: org.id,
+        })
+        .select("id")
+        .single();
+
+      if (saveError) {
+        throw new Error("Event save: " + saveError.message);
+      }
+
+      if (ticketMode === "sell") {
+        const { error: ticketError } = await supabase
+          .from("event_ticket_types")
+          .insert({
+            event_id: savedEvent.id,
+            name: ticketName.trim(),
+            price: Number(price),
+            quantity: Number(quantity),
+            currency: "INR",
+          });
+
+        if (ticketError) {
+          throw new Error(
+            "Event saved, but ticket setup failed: " +
+              ticketError.message +
+              ". Avoid publishing again until this is fixed."
+          );
+        }
+      }
+
+      router.push("/events/" + slug);
+    } catch (err) {
+      setError(err?.message || "Could not publish the event.");
+    } finally {
+      setLoading(false);
+    }
+    const input =
+    "w-full min-w-0 rounded-xl border border-gray-700 bg-neutral-900 p-3 text-white focus:border-blue-500 focus:outline-none";
+
+  const stepNames = ["Tickets", "Flyer", "Event details"];
 
   return (
-    <main style={styles.page}>
-      <header style={styles.navbar}>
-        <a href="/" style={styles.brand}>
-          VYBE
-        </a>
+    <main className="min-h-screen bg-black px-4 py-5 text-white">
+      <div className="mx-auto max-w-2xl">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-400">
+          VYBE · EVENT CREATOR
+        </p>
 
-        <nav style={styles.navLinks}>
-          <a href="#discover" style={styles.navLink}>
-            Discover
-          </a>
+        <h1 className="mt-2 text-3xl font-bold">Create an event</h1>
+        <p className="mb-6 mt-1 text-sm text-gray-400">
+          Create, customize and publish your event.
+        </p>
 
-  {session ? (
-  <button onClick={handleLogout} style={styles.navButton}>
-    Log out
-  </button>
-) : (
-  <a href="/auth" style={styles.navLink}>
-    Sign in
-  </a>
-)}
-          
-
-          {!authReady ? (
-            <span style={styles.navLink}>Loading...</span>
-          ) : session ? (
+        <div className="mb-6 grid grid-cols-3 gap-2">
+          {stepNames.map((name, i) => (
             <button
-              onClick={handleLogout}
-              disabled={loggingOut}
-              style={styles.navButton}
+              key={name}
+              type="button"
+              onClick={() => {
+                setError("");
+                setStep(i + 1);
+              }}
+              className={`rounded-xl border px-2 py-3 text-sm font-semibold ${
+                step === i + 1
+                  ? "border-blue-500 bg-blue-950 text-white"
+                  : step > i + 1
+                    ? "border-green-700 bg-green-950/40 text-green-300"
+                    : "border-gray-800 bg-neutral-950 text-gray-400"
+              }`}
             >
-              {loggingOut ? "Logging out..." : "Log out"}
+              {step > i + 1 ? "✓" : `${i + 1}.`} {name}
             </button>
-          ) : (
-            <a href="/auth" style={styles.navLink}>
-              Sign in
-            </a>
-          )}
-        </nav>
-      </header>
+          ))}
+        </div>
 
-      <section style={styles.hero}>
-        <div style={styles.heroActions}>
-          <a href="/" style={styles.heroLogo}>
-            VYBE<span style={{ color: "#946cff" }}>.</span>
-          </a>
+        <form onSubmit={publishEvent} className="space-y-5">
+          {step === 1 && (
+            <section className="space-y-4 rounded-2xl border border-gray-800 bg-neutral-950 p-4">
+              <h2 className="text-lg font-semibold">Choose ticket type</h2>
 
-          {!authReady ? (
-            <span style={styles.loginButton}>Loading...</span>
-          ) : session ? (
-            <div style={styles.accountBox}>
-              <span style={styles.accountText}>
-                {session.user?.email || "Account"}
-              </span>
               <button
-                onClick={handleLogout}
-                disabled={loggingOut}
-                style={styles.loginButton}
+                type="button"
+                onClick={() => setTicketMode("rsvp")}
+                className={`w-full rounded-2xl border p-4 text-left ${
+                  ticketMode === "rsvp"
+                    ? "border-blue-500 bg-blue-950/50"
+                    : "border-gray-800 bg-neutral-900"
+                }`}
               >
-                {loggingOut ? "..." : "Log out"}
+                <b className="block">Free RSVP</b>
+                <span className="text-sm text-gray-400">
+                  Guests reserve a place for free.
+                </span>
               </button>
-            </div>
-          ) : (
-            <a href="/auth" style={styles.loginButton}>
-              Log in
-            </a>
+
+              <button
+                type="button"
+                onClick={() => setTicketMode("sell")}
+                className={`w-full rounded-2xl border p-4 text-left ${
+                  ticketMode === "sell"
+                    ? "border-blue-500 bg-blue-950/50"
+                    : "border-gray-800 bg-neutral-900"
+                }`}
+              >
+                <b className="block">Sell Tickets</b>
+                <span className="text-sm text-gray-400">
+                  Set ticket price and quantity.
+                </span>
+              </button>
+
+              {ticketMode === "sell" && (
+                <div className="space-y-3 rounded-xl border border-gray-800 p-3">
+                  <input
+                    required
+                    value={ticketName}
+                    onChange={(e) => setTicketName(e.target.value)}
+                    placeholder="Ticket name"
+                    className={input}
+                  />
+                  <input
+                    required
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    placeholder="Price (INR)"
+                    className={input}
+                  />
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    placeholder="Quantity"
+                    className={input}
+                  />
+                  <p className="text-xs text-gray-400">
+                    Online payments need a payment provider integration.
+                  </p>
+                </div>
+              )}
+
+              <label className="block text-sm">
+                Organization name
+                {organization ? (
+                  <div className="mt-1 rounded-xl bg-neutral-900 p-3">
+                    {organization.name}
+                  </div>
+                ) : (
+                  <input
+                    required
+                    value={organizationName}
+                    onChange={(e) => setOrganizationName(e.target.value)}
+                    placeholder="Your organization name"
+                    className={`${input} mt-1`}
+                  />
+                )}
+              </label>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setError("");
+                  setStep(2);
+                }}
+                className="w-full rounded-xl bg-blue-600 p-4 font-bold"
+              >
+                Continue to flyer →
+              </button>
+            </section>
           )}
 
-          <a href="/organize" style={styles.createButton}>
-            Create event
-          </a>
-        </div>
+          {step === 2 && (
+            <section className="space-y-4 rounded-2xl border border-gray-800 bg-neutral-950 p-4">
+              <h2 className="text-lg font-semibold">
+                Choose your event flyer
+              </h2>
+              <p className="text-sm text-gray-400">
+                Select a sample or upload your own. Preview appears immediately.
+              </p>
 
-        <div style={styles.heroContent}>
-          <div style={styles.eyebrow}>
-            ✦ DISCOVER MORE. EXPERIENCE EVERYTHING.
-          </div>
+              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                <input
+                  type="search"
+                  value={flyerSearch}
+                  onChange={(event) => setFlyerSearch(event.target.value)}
+                  placeholder="Search all flyers..."
+                  aria-label="Search flyer templates"
+                  className="sm:col-span-2 md:col-span-3 w-full rounded-xl border border-gray-700 bg-neutral-900 p-3 text-sm outline-none focus:border-blue-500"
+                />
+                <select
+                  value={flyerCategory}
+                  onChange={(event) => setFlyerCategory(event.target.value)}
+                  aria-label="Filter flyer category"
+                  className="sm:col-span-2 md:col-span-3 w-full rounded-xl border border-gray-700 bg-neutral-900 p-3 text-sm"
+                >
+                  {["All", ...CATEGORIES].map((name) => <option key={name} value={name}>{name === "All" ? "All flyer categories" : name}</option>)}
+                </select>
+                {flyerTemplates
+                  .filter((item) => item.name.toLowerCase().includes(flyerSearch.trim().toLowerCase()))
+                  .filter((item) => flyerCategory === "All" || item.category === flyerCategory)
+                  .map((item) => (
+                  <button
+                    key={item.image}
+                    type="button"
+                    onClick={() => selectTemplate(item)}
+                    className={`overflow-hidden rounded-xl border text-left ${
+                      template === item.name
+                        ? "border-blue-500 ring-2 ring-blue-500/30"
+                        : "border-gray-700"
+                    }`}
+                  >
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      className="h-28 w-full object-cover"
+                    />
+                    <span className="block p-2 text-sm">{item.name}</span>
+                  </button>
+                ))}
+                {!templatesLoading && flyerTemplates.filter((item) => item.name.toLowerCase().includes(flyerSearch.trim().toLowerCase())).filter((item) => flyerCategory === "All" || item.category === flyerCategory).length === 0 && (
+                  <p className="col-span-full py-6 text-center text-sm text-gray-400">No flyers match this search. Upload your own flyer or add more images to the Supabase templates folder.</p>
+                )}
+                {templatesLoading && <p className="col-span-full text-sm text-gray-400">Loading flyer gallery…</p>}
+              </div>
 
-          <h1 style={styles.title}>
-            Find your
-            <br />
-            people.
-            <br />
-            <span style={styles.purpleText}>Feel the</span>
-            <br />
-            <span style={styles.purpleText}>moment.</span>
-          </h1>
+              <button
+                type="button"
+                onClick={() => fileInput.current?.click()}
+                className="w-full rounded-xl border border-dashed border-gray-600 p-5 text-center"
+              >
+                <span className="block text-lg">＋ Upload your flyer</span>
+                <span className="text-sm text-gray-400">
+                  JPG, PNG, WEBP · max 5 MB
+                </span>
+              </button>
 
-          <p style={styles.description}>
-            Discover events, meet new people, and find something worth going
-            out for. Your next experience starts here.
-          </p>
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/*"
+                onChange={handleFlyer}
+                className="hidden"
+              />
 
-          <form
-            style={styles.searchBox}
-            onSubmit={(e) => {
-              e.preventDefault();
-              document
-                .getElementById("discover")
-                ?.scrollIntoView({ behavior: "smooth" });
-            }}
-          >
-            <input
-              type="search"
-              placeholder="Search events, music, meetups..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={styles.searchInput}
-            />
+              {preview && (
+                <div className="rounded-xl border border-gray-800 bg-neutral-900 p-3">
+                  <div className="mb-3 flex justify-between">
+                    <b>Flyer preview</b>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreview("");
+                        setFlyer(null);
+                        setTemplate("");
+                        if (fileInput.current) fileInput.current.value = "";
+                      }}
+                      className="text-sm text-red-300"
+                    >
+                      Remove
+                    </button>
+                  </div>
 
-            <input
-              type="text"
-              placeholder="Enter city"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              style={styles.searchInput}
-            />
-
-            <button type="submit" style={styles.searchButton}>
-              Find events
-            </button>
-          </form>
-        </div>
-      </section>
-
-      <section id="discover" style={styles.eventsSection}>
-        <div style={styles.sectionHeading}>
-          <div>
-            <p style={styles.sectionEyebrow}>EXPLORE YOUR WORLD</p>
-            <h2 style={styles.sectionTitle}>Discover events</h2>
-          </div>
-          <span style={styles.eventCount}>{filteredEvents.length} events</span>
-        </div>
-
-        {eventsLoading ? (
-          <p style={styles.muted}>Finding events for you...</p>
-        ) : eventError ? (
-          <p style={styles.muted}>{eventError}</p>
-        ) : filteredEvents.length === 0 ? (
-          <div style={styles.emptyBox}>
-            <div style={styles.emptyIcon}>✦</div>
-            <h3 style={styles.emptyTitle}>Your next moment starts here.</h3>
-            <p style={styles.muted}>
-              No published events match your search yet. Try another search
-              or check back soon.
-            </p>
-            <a href="/organize" style={styles.createButton}>
-              Create an event
-            </a>
-          </div>
-        ) : (
-          <div style={styles.eventGrid}>
-            {filteredEvents.map((event) => (
-              <article key={event.id} style={styles.eventCard}>
-                {event.image_url ? (
                   <img
-                    src={event.image_url}
-                    alt={event.title || "Event"}
-                    style={styles.eventImage}
+                    src={preview}
+                    alt="Flyer preview"
+                    className="mx-auto max-h-[360px] max-w-full rounded-lg object-contain"
                   />
-                ) : (
-                  <div style={styles.eventImagePlaceholder}>VYBE ✦</div>
+
+                  <p className="mt-2 text-center text-xs text-gray-400">
+                    {flyer ? flyer.name : `${template} sample flyer`}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError("");
+                    setStep(1);
+                  }}
+                  className="w-1/3 rounded-xl border border-gray-700 p-4"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!preview) {
+                      setError("Choose a flyer or upload your own image.");
+                      return;
+                    }
+                    setError("");
+                    setStep(3);
+                  }}
+                  className="flex-1 rounded-xl bg-blue-600 p-4 font-bold"
+                >
+                  Continue to details →
+                </button>
+              </div>
+            </section>
+          )}
+
+          {step === 3 && (
+            <>
+              <section className="space-y-3 rounded-2xl border border-gray-800 bg-neutral-950 p-4">
+                <h2 className="text-lg font-semibold">
+                  Event details & description
+                </h2>
+
+                {preview && (
+                  <div className="flex items-center gap-3 rounded-xl bg-neutral-900 p-3">
+                    <img
+                      src={preview}
+                      alt="Flyer thumbnail"
+                      className="h-16 w-12 rounded-md object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setStep(2)}
+                      className="text-sm text-blue-400"
+                    >
+                      Change flyer
+                    </button>
+                  </div>
                 )}
 
-                <div style={styles.eventBody}>
-                  <span style={styles.category}>
-                    {event.category || "Community"}
-                  </span>
+                <input
+                  required
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Event name *"
+                  className={input}
+                />
 
-                  <h3 style={styles.eventTitle}>
-                    {event.title || "Untitled event"}
-                  </h3>
+                <textarea
+                  required
+                  rows={4}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Event description *"
+                  className={input}
+                />
 
-                  <p style={styles.eventMeta}>
-                    {formatDate(event.starts_at)}
-                  </p>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className={input}
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
+              </section>
 
-                  <p style={styles.eventMeta}>
-                    {[event.city, event.country].filter(Boolean).join(", ") ||
-                      "Location to be announced"}
-                  </p>
+              <section className="space-y-3 rounded-2xl border border-gray-800 bg-neutral-950 p-4">
+                <h2 className="font-semibold">Location — worldwide</h2>
 
-                  {event.description && (
-                    <p style={styles.eventDescription}>
-                      {event.description}
-                    </p>
-                  )}
+                <input
+                  required
+                  value={address}
+                  onChange={(e) => {
+                    setAddress(e.target.value);
+                    setSelectedPlace(null);
+                  }}
+                  placeholder="Search city, country, address *"
+                  autoComplete="off"
+                  className={input}
+                />
 
-                  <p style={styles.eventPrice}>
-                    {event.price == null || event.price === ""
-                      ? "Price to be announced"
-                      : Number(event.price) === 0
-                        ? "Free"
-                        : `${event.currency || "₹"} ${event.price}`}
-                  </p>
-
-                  <a
-                    href={
-                      event.slug
-                        ? `/events/${encodeURIComponent(event.slug)}`
-                        : "/auth"
-                    }
-                    style={styles.eventLink}
+                {places.map((place, i) => (
+                  <button
+                    key={place.properties?.osm_id || i}
+                    type="button"
+                    onClick={() => choosePlace(place)}
+                    className="block w-full rounded-lg border border-gray-800 p-3 text-left"
                   >
-                    View event →
-                  </a>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+                    <span className="block">
+                      {place.properties?.name ||
+                        place.properties?.street ||
+                        "Location"}
+                    </span>
+                    <span className="text-sm text-gray-400">
+                      {[
+                        place.properties?.city ||
+                          place.properties?.town ||
+                          place.properties?.village,
+                        place.properties?.state,
+                        place.properties?.country,
+                      ]
+                        .filter(Boolean)
+                        .join(", ")}
+                    </span>
+                  </button>
+                ))}
 
-      <footer style={styles.footer}>
-        <a href="/" style={styles.brand}>
-          VYBE
-        </a>
-        <p style={styles.muted}>Your city. Your people. Your VYBE.</p>
-      </footer>
+                {selectedPlace && (
+                  <p className="text-sm text-green-400">
+                    Selected: {selectedPlace.label}
+                  </p>
+                )}
+
+                <input
+                  value={venue}
+                  onChange={(e) => setVenue(e.target.value)}
+                  placeholder="Venue name (optional)"
+                  className={input}
+                />
+              </section>
+
+              <section className="space-y-3 rounded-2xl border border-gray-800 bg-neutral-950 p-4">
+                <h2 className="font-semibold">Date and time</h2>
+
+                <label className="block text-sm">
+                  Starts *
+                  <input
+                    required
+                    type="datetime-local"
+                    value={startsAt}
+                    onChange={(e) => setStartsAt(e.target.value)}
+                    className={`${input} mt-1`}
+                  />
+                </label>
+
+                <label className="block text-sm">
+                  Ends
+                  <input
+                    type="datetime-local"
+                    min={startsAt || undefined}
+                    value={endsAt}
+                    onChange={(e) => setEndsAt(e.target.value)}
+                    className={`${input} mt-1`}
+                  />
+                </label>
+              </section>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError("");
+                    setStep(2);
+                  }}
+                  className="w-1/3 rounded-xl border border-gray-700 p-4"
+                >
+                  Back
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 rounded-xl bg-blue-600 p-4 font-bold disabled:opacity-50"
+                >
+                  {loading ? "Publishing..." : "Publish event"}
+                </button>
+              </div>
+            </>
+          )}
+
+          {error && (
+            <p className="break-words rounded-xl bg-red-950 p-3 text-sm text-red-300">
+              {error}
+            </p>
+          )}
+        </form>
+      </div>
     </main>
   );
 }
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#fffffffff",
-    color: "#241b38",
-    fontFamily: "Arial, Helvetica, sans-serif",
-  },
-  navbar: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "24px 6%",
-    borderBottom: "1px solid #eee8f7",
-    flexWrap: "wrap",
-  },
-  brand: {
-    color: "#ffffff",
-    fontSize: 36,
-    fontWeight: 900,
-    textDecoration: "none",
-    letterSpacing: "-2px",
-  },
-  navLinks: {
-    display: "flex",
-    alignItems: "center",
-    gap: 18,
-    flexWrap: "wrap",
-  },
-  navLink: {
-    color: "#746b85",
-    textDecoration: "none",
-    fontSize: 15,
-  },
-  navButton: {
-    color: "#7953e8",
-    background: "transparent",
-    border: "none",
-    fontSize: 15,
-    cursor: "pointer",
-  },
-  hero: {
-    maxWidth: 1100,
-    margin: "0 auto",
-    padding: "16px 5% 72px",
-  },
-  heroActions: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 14,
-    flexWrap: "wrap",
-    padding: "0 0 22px",
-    borderBottom: "1px solid #eee8f7",
-  },
-  heroLogo: {
-    color: "#ffffff",
-    fontSize: 36,
-    fontWeight: 900,
-    letterSpacing: "-2px",
-    textDecoration: "none",
-  },
-  accountBox: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-  accountText: {
-    color: "#7953e8",
-    fontSize: 13,
-    maxWidth: 180,
-    overflowWrap: "anywhere",
-  },
-  loginButton: {
-    display: "inline-block",
-    padding: "15px 22px",
-    borderRadius: 40,
-    border: "1px solid #e5dcef",
-    background: "#f8f5ff",
-    color: "#ffffff",
-    textDecoration: "none",
-    fontSize: 15,
-    cursor: "pointer",
-  },
-  createButton: {
-    display: "inline-block",
-    padding: "17px 24px",
-    borderRadius: 40,
-    background: "#7953e8",
-    color: "#ffffff",
-    textDecoration: "none",
-    fontWeight: 700,
-    border: "none",
-    cursor: "pointer",
-  },
-  heroContent: {
-    maxWidth: 700,
-    margin: "80px auto 0",
-  },
-  eyebrow: {
-    display: "inline-block",
-    padding: "12px 18px",
-    borderRadius: 40,
-    border: "1px solid #e5d8ff",
-    background: "#f4edff",
-    color: "#7953e8",
-    fontSize: 13,
-    letterSpacing: 0.5,
-  },
-  title: {
-    fontSize: "clamp(48px, 9vw, 88px)",
-    lineHeight: 1.02,
-    letterSpacing: "-4px",
-    margin: "48px 0 24px",
-    fontWeight: 900,
-  },
-  purpleText: {
-    color: "#946cff",
-  },
-  description: {
-    color: "#756d88",
-    fontSize: 20,
-    lineHeight: 1.8,
-    maxWidth: 600,
-  },
-  searchBox: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    padding: 18,
-    marginTop: 42,
-    border: "1px solid #eee8f7",
-    borderRadius: 24,
-    background: "#ffffff",
-  },
-  searchInput: {
-    width: "100%",
-    boxSizing: "border-box",
-    border: "1px solid #e4dced",
-    borderRadius: 12,
-    background: "#ffffff",
-    color: "#ffffff",
-    padding: 17,
-    fontSize: 16,
-    outlineColor: "#946cff",
-  },
-  searchButton: {
-    border: "none",
-    borderRadius: 12,
-    background: "#7953e8",
-    color: "#ffffff",
-    padding: 17,
-    fontSize: 16,
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-  eventsSection: {
-    maxWidth: 1100,
-    margin: "0 auto",
-    padding: "40px 5% 90px",
-  },
-  sectionHeading: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "end",
-    gap: 12,
-    flexWrap: "wrap",
-    marginBottom: 30,
-  },
-  sectionEyebrow: {
-    color: "#b79aff",
-    fontSize: 12,
-    letterSpacing: 2,
-    fontWeight: 700,
-  },
-  sectionTitle: {
-    fontSize: 34,
-    margin: "8px 0",
-    letterSpacing: "-1px",
-  },
-  eventCount: {
-    color: "#7953e8",
-    fontSize: 14,
-  },
-  eventGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
-    gap: 20,
-  },
-  eventCard: {
-    border: "1px solid #eee8f7",
-    borderRadius: 20,
-    overflow: "hidden",
-    background: "#faf7ff",
-    minWidth: 0,
-  },
-  eventImage: {
-    display: "block",
-    width: "100%",
-    height: 190,
-    objectFit: "cover",
-    background: "#eee8f702e",
-  },
-  eventImagePlaceholder: {
-    height: 190,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "linear-gradient(135deg, #22163c, #101018)",
-    color: "#7953e8",
-    fontSize: 28,
-    fontWeight: 900,
-  },
-  eventBody: {
-    padding: 20,
-  },
-  category: {
-    color: "#7953e8",
-    fontSize: 12,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  eventTitle: {
-    fontSize: 21,
-    lineHeight: 1.3,
-    margin: "12px 0",
-    overflowWrap: "anywhere",
-  },
-  eventMeta: {
-    color: "#756d88",
-    fontSize: 14,
-    lineHeight: 1.6,
-  },
-  eventDescription: {
-    color: "#746b85",
-    fontSize: 14,
-    lineHeight: 1.6,
-    overflowWrap: "anywhere",
-  },
-  eventPrice: {
-    color: "#ffffff",
-    fontWeight: 700,
-    marginTop: 18,
-  },
-  eventLink: {
-    display: "inline-block",
-    marginTop: 8,
-    color: "#7953e8",
-    textDecoration: "none",
-    fontWeight: 700,
-  },
-  emptyBox: {
-    padding: "42px 20px",
-    borderRadius: 20,
-    border: "1px solid #eee8f7",
-    background: "#faf7ff",
-    textAlign: "center",
-  },
-  emptyIcon: {
-    color: "#946cff",
-    fontSize: 38,
-  },
-  emptyTitle: {
-    fontSize: 24,
-  },
-  muted: {
-    color: "#756d88",
-    lineHeight: 1.7,
-  },
-  footer: {
-    borderTop: "1px solid #eee8f7",
-    padding: "32px 6%",
-    textAlign: "center",
-  },
-};
-
-
+  
