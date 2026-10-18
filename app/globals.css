@@ -1090,3 +1090,148 @@ img {
     font-size: 11px;
   }
 }
+
+/* VYBE REFERENCE COLOR THEME */
+
+:root {
+  --vybe-ink: #11152a;
+  --vybe-muted: #687084;
+  --vybe-purple: #7436ed;
+  --vybe-pink: #f02c91;
+  --vybe-border: #ececf4;
+  --vybe-bg: #ffffff;
+}
+
+body,
+.vybe {
+  background: #ffffff !important;
+  color: #11152a;
+}
+
+.vybe-nav {
+  background: #ffffff !important;
+  border-bottom: 1px solid #f0eff6;
+}
+
+.vybe-logo {
+  background: linear-gradient(110deg, #6833ef 5%, #c42bd0 55%, #f02c91 100%);
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.vybe-nav-active,
+.vybe-nav-links > a:hover {
+  background: #f0eaff;
+  color: #6030e8;
+}
+
+.vybe-create,
+.vybe-search-button {
+  background: linear-gradient(105deg, #702cf0 0%, #b52bd9 50%, #f02c91 100%);
+  color: #ffffff;
+  box-shadow: 0 5px 16px rgba(112, 44, 240, 0.16);
+}
+
+.vybe-hero {
+  background:
+    radial-gradient(ellipse at 67% 18%, rgba(193, 201, 255, 0.45), transparent 42%),
+    radial-gradient(ellipse at 88% 72%, rgba(255, 205, 225, 0.62), transparent 42%),
+    linear-gradient(110deg, #f6f8ff 0%, #fff8fb 55%, #fff2f8 100%);
+}
+
+.vybe-hero h1 {
+  color: #101429;
+}
+
+.vybe-hero h1 span {
+  background: linear-gradient(100deg, #7134f0 0%, #c22cce 60%, #ff654d 100%);
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.vybe-search {
+  background: #ffffff;
+  border: 1px solid #f0edf8;
+  box-shadow: 0 8px 30px rgba(58, 43, 104, 0.08);
+}
+
+.vybe-popular button {
+  background: #eeedff;
+  color: #27223c;
+}
+
+.vybe-category:nth-child(1) { --category-bg: #fff0f5; }
+.vybe-category:nth-child(2) { --category-bg: #f2eaff; }
+.vybe-category:nth-child(3) { --category-bg: #fff0e9; }
+.vybe-category:nth-child(4) { --category-bg: #fff6df; }
+.vybe-category:nth-child(5) { --category-bg: #eaf6ff; }
+.vybe-category:nth-child(6) { --category-bg: #fff0eb; }
+.vybe-category:nth-child(7) { --category-bg: #f3edff; }
+.vybe-category:nth-child(8) { --category-bg: #f0efff; }
+.vybe-category:nth-child(9) { --category-bg: #e9f9ef; }
+.vybe-category:nth-child(10) { --category-bg: #fff5dc; }
+.vybe-category:nth-child(11) { --category-bg: #eaf5ff; }
+.vybe-category:nth-child(12) { --category-bg: #f1f2f7; }
+
+.vybe-category {
+  border-color: transparent;
+}
+
+.vybe-category.is-selected {
+  border-color: #7436ed;
+  box-shadow: 0 0 0 2px rgba(116, 54, 237, 0.12);
+}
+
+.vybe-section-title-row h2 {
+  color: #11152a;
+}
+
+.vybe-view-link,
+.vybe-event-footer a {
+  color: #6035e8;
+}
+
+.vybe-event-card {
+  background: #ffffff;
+  border: 1px solid #eaeaf2;
+  box-shadow: 0 5px 18px rgba(25, 23, 54, 0.07);
+}
+
+.vybe-event-card:hover {
+  box-shadow: 0 12px 28px rgba(25, 23, 54, 0.12);
+}
+
+.vybe-event-badge {
+  background: #f5cc35;
+  color: #171525;
+}
+
+.vybe-event-category {
+  background: #f0eaff;
+  color: #6535df;
+}
+
+.vybe-event-info {
+  background: #ffffff;
+}
+
+.vybe-footer {
+  background: #fcfbff;
+  border-top: 1px solid #ececf4;
+}
+
+.vybe-footer a:hover,
+.vybe-footer button:hover {
+  color: #7436ed;
+}
+
+@media (max-width: 700px) {
+  .vybe-hero {
+    background:
+      radial-gradient(ellipse at 85% 20%, rgba(193, 201, 255, 0.4), transparent 48%),
+      linear-gradient(110deg, #f6f8ff, #fff5fa);
+  }
+}
+
