@@ -7,68 +7,71 @@ import { supabaseBrowser as supabase } from "../../lib/supabase";
 
 const BUCKET = "event-flyers";
 
-const FLYERS = [
+const CATEGORIES = [
+  "Music", "Nightlife", "Sports", "Business", "Education",
+  "Food & Drink", "Arts & Culture", "Community", "Other",
+];
+
+const DEFAULT_FLYERS = [
   {
     name: "Party",
     category: "Nightlife",
-    image:
-      "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=900&q=85",
+    image: "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=900&q=85",
   },
   {
     name: "Music",
     category: "Music",
-    image:
-      "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=85",
+    image: "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=85",
   },
   {
     name: "Sports",
     category: "Sports",
-    image:
-      "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=900&q=85",
+    image: "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=900&q=85",
   },
 ];
 
-const CATEGORIES = [
-  "Music",
-  "Nightlife",
-  "Sports",
-  "Business",
-  "Education",
-  "Food & Drink",
-  "Arts & Culture",
-  "Community",
-  "Other",
-];
-
 const inputClass =
-  "w-full min-w-0 rounded-xl border border-violet-100 bg-white p-3 text-slate-900 outline-none placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100";
+  "mt-2 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100";
+
+function formatDate(value) {
+  if (!value) return "Date and time not set";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "Date and time not set";
+
+  return d.toLocaleString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export default function OrganizePage() {
   const router = useRouter();
   const fileInput = useRef(null);
   const objectUrlRef = useRef("");
 
-  const [step, setStep] = useState(1);
   const [flyer, setFlyer] = useState(null);
   const [preview, setPreview] = useState("");
   const [template, setTemplate] = useState("");
-
-  const [flyerTemplates, setFlyerTemplates] = useState(FLYERS);
+  const [flyers, setFlyers] = useState(DEFAULT_FLYERS);
+  const [galleryOpen, setGalleryOpen] = useState(false);
   const [flyerSearch, setFlyerSearch] = useState("");
   const [flyerCategory, setFlyerCategory] = useState("All");
   const [templatesLoading, setTemplatesLoading] = useState(true);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("Music");
+  const [startsAt, setStartsAt] = useState("");
+  const [endsAt, setEndsAt] = useState("");
 
   const [address, setAddress] = useState("");
   const [places, setPlaces] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [venue, setVenue] = useState("");
-
-  const [category, setCategory] = useState("Music");
-  const [startsAt, setStartsAt] = useState("");
-  const [endsAt, setEndsAt] = useState("");
 
   const [ticketMode, setTicketMode] = useState("rsvp");
   const [ticketName, setTicketName] = useState("General Admission");
@@ -80,16 +83,19 @@ export default function OrganizePage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [section, setSection] = useState("details");
+  const [previewMode, setPreviewMode] = useState("desktop");
+  const [recurring, setRecurring] = useState(false);
+  const [limitRsvp, setLimitRsvp] = useState(false);
+  const [rsvpLimit, setRsvpLimit] = useState("100");
 
-  // Load all available flyer templates from Supabase Storage.
+  // Load flyer templates from Supabase Storage.
   useEffect(() => {
     let active = true;
 
-    async function loadFlyerTemplates() {
-      setTemplatesLoading(true);
-
-      const all = [...FLYERS];
-      const pageSize = 100;
+    async function loadTemplates() {
+      const all = [...DEFAULT_FLYERS];
       let offset = 0;
 
       try {
@@ -97,7 +103,7 @@ export default function OrganizePage() {
           const { data, error: listError } = await supabase.storage
             .from(BUCKET)
             .list("templates", {
-              limit: pageSize,
+              limit: 100,
               offset,
               sortBy: { column: "name", order: "asc" },
             });
@@ -113,15 +119,13 @@ export default function OrganizePage() {
               continue;
             }
 
-            const path = `templates/${item.name}`;
-
             const { data: publicData } = supabase.storage
               .from(BUCKET)
-              .getPublicUrl(path);
+              .getPublicUrl(`templates/${item.name}`);
 
             if (
               !publicData?.publicUrl ||
-              all.some((item) => item.image === publicData.publicUrl)
+              all.some((x) => x.image === publicData.publicUrl)
             ) {
               continue;
             }
@@ -131,52 +135,47 @@ export default function OrganizePage() {
               .replace(/[-_]+/g, " ")
               .trim();
 
-            const normalized = name.toLowerCase();
+            const norm = name.toLowerCase();
 
-            const matchedCategory =
-              CATEGORIES.find((itemCategory) =>
-                normalized.includes(
-                  itemCategory.toLowerCase().replace(/ & /g, " ")
-                )
+            const matched =
+              CATEGORIES.find((c) =>
+                norm.includes(c.toLowerCase().replace(/ & /g, " "))
               ) || "Other";
 
             all.push({
               name: name || item.name,
-              category: matchedCategory,
+              category: matched,
               image: publicData.publicUrl,
             });
           }
 
-          if (data.length < pageSize) break;
-
-          offset += pageSize;
+          if (data.length < 100) break;
+          offset += 100;
         }
       } catch {
-        // Built-in templates remain available if storage listing fails.
+        // Built-in flyer templates remain available.
       }
 
       if (active) {
-        setFlyerTemplates(all);
+        setFlyers(all);
         setTemplatesLoading(false);
       }
     }
 
-    loadFlyerTemplates();
+    loadTemplates();
 
     return () => {
       active = false;
     };
   }, []);
 
-  // Load the signed-in user's organization.
+  // Load signed-in user's organization.
   useEffect(() => {
     let active = true;
 
-    async function loadOrganization() {
+    async function loadOrg() {
       try {
-        const { data: sessionData } =
-          await supabase.auth.getSession();
-
+        const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user;
 
         if (!user || !active) return;
@@ -193,11 +192,11 @@ export default function OrganizePage() {
           setOrganizationName(data.name);
         }
       } catch {
-        // Organization name can be entered manually.
+        // Organization can be entered manually.
       }
     }
 
-    loadOrganization();
+    loadOrg();
 
     return () => {
       active = false;
@@ -226,9 +225,7 @@ export default function OrganizePage() {
         const result = await response.json();
         setPlaces(result.features || []);
       } catch (err) {
-        if (err.name !== "AbortError") {
-          setPlaces([]);
-        }
+        if (err.name !== "AbortError") setPlaces([]);
       }
     }, 450);
 
@@ -238,7 +235,6 @@ export default function OrganizePage() {
     };
   }, [address, selectedPlace]);
 
-  // Clean up temporary uploaded-image previews.
   useEffect(() => {
     return () => {
       if (objectUrlRef.current) {
@@ -271,23 +267,23 @@ export default function OrganizePage() {
     setCategory(item.category);
     setFlyer(null);
     setPreview(item.image);
+    setGalleryOpen(false);
     setError("");
   }
 
-  function handleFlyer(event) {
-    const file = event.target.files?.[0];
-
+  function handleFlyer(e) {
+    const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
       setError("Please choose an image file.");
-      event.target.value = "";
+      e.target.value = "";
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
       setError("Image must be smaller than 5 MB.");
-      event.target.value = "";
+      e.target.value = "";
       return;
     }
 
@@ -310,9 +306,7 @@ export default function OrganizePage() {
   function choosePlace(place) {
     const p = place.properties || {};
     const coords = place.geometry?.coordinates || [];
-
-    const city =
-      p.city || p.town || p.village || p.county || "";
+    const city = p.city || p.town || p.village || p.county || "";
 
     const label = [
       p.name,
@@ -323,7 +317,7 @@ export default function OrganizePage() {
       p.country,
     ]
       .filter(Boolean)
-      .filter((value, index, array) => array.indexOf(value) === index)
+      .filter((v, i, a) => a.indexOf(v) === i)
       .join(", ");
 
     setSelectedPlace({
@@ -338,33 +332,42 @@ export default function OrganizePage() {
     setPlaces([]);
   }
 
-  async function publishEvent(e) {
-    e.preventDefault();
-    setError("");
+  async function saveEvent(e, status = "published") {
+    if (e?.preventDefault) e.preventDefault();
 
-    if (!preview) {
-      setStep(2);
-      setError("Choose a flyer or upload a photo.");
-      return;
-    }
+    setError("");
+    setNotice("");
 
     if (!title.trim() || !description.trim()) {
       setError("Enter event title and description.");
+      setSection("details");
+      return;
+    }
+
+    if (status === "published" && !preview) {
+      setError("Choose a flyer or upload a photo.");
+      setSection("details");
       return;
     }
 
     if (!selectedPlace) {
       setError("Search for a location and select a suggestion.");
+      setSection("location");
       return;
     }
 
-    if (!startsAt || new Date(startsAt) <= new Date()) {
+    if (
+      status === "published" &&
+      (!startsAt || new Date(startsAt) <= new Date())
+    ) {
       setError("Choose a future start date and time.");
+      setSection("details");
       return;
     }
 
-    if (endsAt && new Date(endsAt) <= new Date(startsAt)) {
+    if (endsAt && startsAt && new Date(endsAt) <= new Date(startsAt)) {
       setError("End time must be after start time.");
+      setSection("details");
       return;
     }
 
@@ -377,6 +380,7 @@ export default function OrganizePage() {
         Number(quantity) < 1)
     ) {
       setError("Check ticket name, price, and quantity.");
+      setSection("tickets");
       return;
     }
 
@@ -401,11 +405,11 @@ export default function OrganizePage() {
         const name = organizationName.trim();
 
         if (!name) {
-          setStep(1);
-          throw new Error("Enter your organization name first.");
+          setSection("additional");
+          throw new Error("Enter your organization name.");
         }
 
-        const base =
+        const baseOrg =
           name
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
@@ -416,7 +420,7 @@ export default function OrganizePage() {
           .insert({
             owner_id: user.id,
             name,
-            slug: base + "-" + Date.now().toString(36),
+            slug: baseOrg + "-" + Date.now().toString(36),
           })
           .select("id, name, slug")
           .single();
@@ -429,7 +433,7 @@ export default function OrganizePage() {
         setOrganization(data);
       }
 
-      let imageUrl = preview;
+      let imageUrl = preview || null;
 
       if (flyer) {
         const safe = flyer.name.replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -474,16 +478,14 @@ export default function OrganizePage() {
           latitude: selectedPlace.latitude,
           longitude: selectedPlace.longitude,
           category,
-          starts_at: new Date(startsAt).toISOString(),
-          ends_at: endsAt
-            ? new Date(endsAt).toISOString()
-            : null,
+          starts_at: startsAt ? new Date(startsAt).toISOString() : null,
+          ends_at: endsAt ? new Date(endsAt).toISOString() : null,
           ticket_mode: ticketMode,
           price: ticketMode === "sell" ? Number(price) : 0,
           currency: "INR",
           image_url: imageUrl,
           slug,
-          status: "published",
+          status,
           organizer_id: user.id,
           organization_id: org.id,
         })
@@ -494,7 +496,7 @@ export default function OrganizePage() {
         throw new Error("Event save: " + saveError.message);
       }
 
-      if (ticketMode === "sell") {
+      if (status === "published" && ticketMode === "sell") {
         const { error: ticketError } = await supabase
           .from("event_ticket_types")
           .insert({
@@ -514,265 +516,578 @@ export default function OrganizePage() {
         }
       }
 
-      router.push("/events/" + slug);
+      if (status === "published") {
+        router.push("/events/" + slug);
+      } else {
+        setNotice("Draft saved successfully.");
+      }
     } catch (err) {
-      setError(err?.message || "Could not publish the event.");
+      setError(err?.message || "Could not save the event.");
     } finally {
       setLoading(false);
     }
   }
 
-  const stepNames = ["Tickets", "Flyer", "Event details"];
-
-  const visibleFlyers = flyerTemplates
-    .filter((item) =>
-      item.name.toLowerCase().includes(flyerSearch.trim().toLowerCase())
+  const visibleFlyers = flyers
+    .filter((f) =>
+      f.name.toLowerCase().includes(flyerSearch.trim().toLowerCase())
     )
-    .filter(
-      (item) =>
-        flyerCategory === "All" || item.category === flyerCategory
-    );
+    .filter((f) => flyerCategory === "All" || f.category === flyerCategory);
+
+  const nav = [
+    { id: "details", label: "Event Details", icon: "▦" },
+    { id: "tickets", label: "Ticket Settings", icon: "♧" },
+    { id: "location", label: "Location", icon: "⌖" },
+    { id: "additional", label: "Additional Info", icon: "ⓘ" },
+    { id: "preview", label: "Preview", icon: "◉" },
+  ];
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-violet-50 via-white to-pink-50 px-4 py-6 text-slate-900 sm:px-6">
-      <div className="mx-auto max-w-3xl">
-        <header className="mb-6 rounded-3xl border border-violet-100 bg-white/95 p-5 shadow-sm sm:p-7">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-violet-600">
-            VYBE · EVENT CREATOR
-          </p>
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50 text-slate-900">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-3 px-4 py-3 lg:px-7">
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="mr-3 text-3xl font-black tracking-tight text-violet-600"
+          >
+            VYBE
+          </button>
 
-          <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">
-            Create an event
-          </h1>
+          <button
+            type="button"
+            onClick={() => router.push("/events")}
+            className="hidden text-sm font-semibold text-slate-600 hover:text-violet-700 sm:block"
+          >
+            ⌂ Explore Events
+          </button>
 
-          <p className="mt-2 text-sm text-slate-500 sm:text-base">
-            Bring people together. Create, customize and publish your event.
-          </p>
+          <span className="rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 px-4 py-2 text-sm font-bold text-white">
+            ＋ Create Event
+          </span>
 
-          <div className="mt-6 grid grid-cols-3 gap-2">
-            {stepNames.map((name, index) => (
+          <button
+            type="button"
+            onClick={() => router.push("/my-events")}
+            className="hidden text-sm font-semibold text-slate-600 hover:text-violet-700 sm:block"
+          >
+            ▣ My Events
+          </button>
+
+          <span className="ml-auto hidden rounded-xl border border-slate-200 px-3 py-2 text-sm md:block">
+            📍 Worldwide
+          </span>
+
+          <button
+            type="button"
+            onClick={() => saveEvent(null, "draft")}
+            disabled={loading}
+            className="rounded-xl border border-violet-200 bg-white px-4 py-2.5 text-sm font-bold text-violet-700 hover:bg-violet-50 disabled:opacity-50"
+          >
+            Save Draft
+          </button>
+
+          <button
+            type="button"
+            onClick={(e) => saveEvent(e, "published")}
+            disabled={loading}
+            className="rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm disabled:opacity-50"
+          >
+            {loading ? "Saving…" : "Publish Event"}
+          </button>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-[1600px] px-3 py-5 sm:px-5 lg:px-7">
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-600">
+              VYBE · EVENT CREATOR
+            </p>
+            <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">
+              Create Event
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Fill in the details below to create and publish your event.
+            </p>
+          </div>
+          <span className="rounded-full border border-violet-100 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500">
+            Live preview
+          </span>
+        </div>
+
+        <form
+          onSubmit={(e) => saveEvent(e, "published")}
+          className="grid items-start gap-4 xl:grid-cols-[175px_minmax(0,1fr)_minmax(350px,0.96fr)]"
+        >
+          <aside className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-100 bg-white p-2 shadow-sm xl:sticky xl:top-24 xl:block xl:space-y-2 xl:overflow-visible">
+            {nav.map((item) => (
               <button
-                key={name}
+                key={item.id}
                 type="button"
-                onClick={() => {
-                  setError("");
-                  setStep(index + 1);
-                }}
-                className={`rounded-xl border px-2 py-3 text-xs font-bold transition sm:text-sm ${
-                  step === index + 1
-                    ? "border-violet-600 bg-violet-600 text-white shadow-md shadow-violet-200"
-                    : step > index + 1
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : "border-violet-100 bg-white text-slate-500 hover:border-violet-300"
+                onClick={() => setSection(item.id)}
+                className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold transition xl:w-full ${
+                  section === item.id
+                    ? "bg-violet-100 text-violet-800"
+                    : "text-slate-600 hover:bg-slate-50"
                 }`}
               >
-                {step > index + 1 ? "✓ " : `${index + 1}. `}
-                {name}
+                <span className="text-lg">{item.icon}</span>
+                <span>{item.label}</span>
               </button>
             ))}
-          </div>
-        </header>
+          </aside>
 
-        <form onSubmit={publishEvent} className="space-y-5">
-          {step === 1 && (
-            <section className="space-y-4 rounded-3xl border border-violet-100 bg-white p-5 shadow-sm sm:p-7">
-              <div>
-                <h2 className="text-xl font-bold">Choose ticket type</h2>
+          <div className="min-w-0 space-y-4">
+            {(section === "details" || section === "additional") && (
+              <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-6">
+                <div className="mb-5 flex items-center gap-3">
+                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-xl text-violet-700">
+                    ▦
+                  </span>
+                  <div>
+                    <h2 className="text-xl font-extrabold">Event Details</h2>
+                    <p className="text-sm text-slate-500">
+                      Basic information about your event
+                    </p>
+                  </div>
+                </div>
+
+                <label className="mb-4 block text-sm font-semibold">
+                  Event Title <span className="text-rose-500">*</span>
+                  <input
+                    required
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g. Neon Nights Music Festival"
+                    className={inputClass}
+                  />
+                </label>
+
+                <label className="mb-4 block text-sm font-semibold">
+                  Category
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className={inputClass}
+                  >
+                    {CATEGORIES.map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="mb-4 block text-sm font-semibold">
+                  Description <span className="text-rose-500">*</span>
+                  <textarea
+                    required
+                    rows={4}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Tell people what makes your event special…"
+                    className={inputClass}
+                  />
+                </label>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block text-sm font-semibold">
+                    Start Date & Time <span className="text-rose-500">*</span>
+                    <input
+                      required
+                      type="datetime-local"
+                      value={startsAt}
+                      onChange={(e) => setStartsAt(e.target.value)}
+                      className={`${inputClass} font-normal`}
+                    />
+                  </label>
+
+                  <label className="block text-sm font-semibold">
+                    End Date & Time
+                    <input
+                      type="datetime-local"
+                      min={startsAt || undefined}
+                      value={endsAt}
+                      onChange={(e) => setEndsAt(e.target.value)}
+                      className={`${inputClass} font-normal`}
+                    />
+                  </label>
+                </div>
+
+                <label className="mt-4 flex items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={recurring}
+                    onChange={(e) => setRecurring(e.target.checked)}
+                    className="h-4 w-4 accent-violet-600"
+                  />
+                  This is a recurring event
+                  <span className="text-xs text-slate-400">
+                    (visual option; recurrence is not saved yet)
+                  </span>
+                </label>
+
+                {section === "additional" && (
+                  <div className="mt-5">
+                    <label className="block text-sm font-semibold">
+                      Organization name
+                      {organization && (
+                        <span className="ml-2 font-normal text-slate-500">
+                          ({organization.name})
+                        </span>
+                      )}
+                      {!organization && (
+                        <input
+                          value={organizationName}
+                          onChange={(e) => setOrganizationName(e.target.value)}
+                          placeholder="Your organization name"
+                          className={inputClass}
+                        />
+                      )}
+                    </label>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Organizer details shown on the event page.
+                    </p>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {(section === "location" || section === "details") && (
+              <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-6">
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-xl text-violet-700">
+                    ⌖
+                  </span>
+                  <div>
+                    <h2 className="text-xl font-extrabold">Location</h2>
+                    <p className="text-sm text-slate-500">
+                      Add the venue location for your event (Worldwide)
+                    </p>
+                  </div>
+                </div>
+
+                <label className="block text-sm font-semibold">
+                  Search for a location, city, or address{" "}
+                  <span className="text-rose-500">*</span>
+                  <input
+                    required
+                    value={address}
+                    onChange={(e) => {
+                      setAddress(e.target.value);
+                      setSelectedPlace(null);
+                    }}
+                    placeholder="Search for a location, city, or address…"
+                    autoComplete="off"
+                    className={inputClass}
+                  />
+                </label>
+
+                {places.length > 0 && (
+                  <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-slate-200">
+                    {places.map((place, i) => (
+                      <button
+                        key={place.properties?.osm_id || i}
+                        type="button"
+                        onClick={() => choosePlace(place)}
+                        className="block w-full border-b border-slate-100 p-3 text-left last:border-0 hover:bg-violet-50"
+                      >
+                        <span className="block text-sm font-bold">
+                          {place.properties?.name ||
+                            place.properties?.street ||
+                            "Location"}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {[
+                            place.properties?.city ||
+                              place.properties?.town ||
+                              place.properties?.village,
+                            place.properties?.state,
+                            place.properties?.country,
+                          ]
+                            .filter(Boolean)
+                            .join(", ")}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedPlace && (
+                  <div className="mt-3 flex items-start justify-between gap-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+                    <span>✓ {selectedPlace.label}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPlace(null);
+                        setAddress("");
+                      }}
+                      className="font-bold"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+
+                <label className="mt-4 block text-sm font-semibold">
+                  Venue name (optional)
+                  <input
+                    value={venue}
+                    onChange={(e) => setVenue(e.target.value)}
+                    placeholder="Venue or building name"
+                    className={inputClass}
+                  />
+                </label>
+              </section>
+            )}
+
+            {(section === "tickets" || section === "details") && (
+              <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-6">
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-xl text-violet-700">
+                    ♧
+                  </span>
+                  <div>
+                    <h2 className="text-xl font-extrabold">Ticket Settings</h2>
+                    <p className="text-sm text-slate-500">
+                      Choose how attendees can join your event
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setTicketMode("rsvp")}
+                    className={`rounded-xl border p-4 text-left ${
+                      ticketMode === "rsvp"
+                        ? "border-violet-500 bg-violet-50 ring-1 ring-violet-200"
+                        : "border-slate-200 hover:border-violet-200"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 font-bold">
+                      {ticketMode === "rsvp" ? "🔘" : "◯"} Free RSVP
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">
+                      Let people RSVP for free
+                    </span>
+                    <span className="mt-2 inline-block rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700">
+                      Free
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTicketMode("sell")}
+                    className={`rounded-xl border p-4 text-left ${
+                      ticketMode === "sell"
+                        ? "border-pink-500 bg-pink-50 ring-1 ring-pink-200"
+                        : "border-slate-200 hover:border-pink-200"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 font-bold">
+                      {ticketMode === "sell" ? "🔘" : "◯"} Sell Tickets
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">
+                      Set ticket types and prices
+                    </span>
+                  </button>
+                </div>
+
+                {ticketMode === "sell" && (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <label className="text-sm font-semibold">
+                      Ticket name
+                      <input
+                        required
+                        value={ticketName}
+                        onChange={(e) => setTicketName(e.target.value)}
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="text-sm font-semibold">
+                      Price (INR)
+                      <input
+                        required
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="text-sm font-semibold">
+                      Quantity
+                      <input
+                        required
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={quantity}
+                        onChange={(e) => setQuantity(e.target.value)}
+                        className={inputClass}
+                      />
+                    </label>
+                    <p className="text-xs text-slate-500 sm:col-span-3">
+                      Online payments require a payment provider integration.
+                    </p>
+                  </div>
+                )}
+
+                {ticketMode === "rsvp" && (
+                  <div className="mt-4">
+                    <label className="flex items-center gap-3 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={limitRsvp}
+                        onChange={(e) => setLimitRsvp(e.target.checked)}
+                        className="h-4 w-4 accent-violet-600"
+                      />
+                      Limit total number of RSVPs (optional)
+                    </label>
+
+                    {limitRsvp && (
+                      <input
+                        type="number"
+                        min="1"
+                        value={rsvpLimit}
+                        onChange={(e) => setRsvpLimit(e.target.value)}
+                        className={inputClass}
+                        placeholder="Maximum RSVPs"
+                      />
+                    )}
+
+                    <p className="mt-2 text-xs text-slate-400">
+                      RSVP limit is a visual option only until a matching database column and enforcement are added.
+                    </p>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {section === "preview" && (
+              <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                <h2 className="text-xl font-extrabold">Event Preview</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Select free registration or set up ticket details.
+                  The live preview is shown on the right. Use Desktop / Mobile to switch layout.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setSection("details")}
+                  className="mt-4 rounded-xl bg-violet-600 px-4 py-3 font-bold text-white"
+                >
+                  Edit event details
+                </button>
+              </section>
+            )}
+
+            <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-extrabold">Event Flyer</h2>
+                  <p className="text-sm text-slate-500">
+                    Browse your gallery or upload your own flyer.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGalleryOpen((v) => !v)}
+                  className="rounded-xl border border-violet-200 px-3 py-2 text-sm font-bold text-violet-700"
+                >
+                  {galleryOpen ? "Close gallery" : "Browse flyers"}
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setTicketMode("rsvp")}
-                className={`w-full rounded-2xl border p-4 text-left transition ${
-                  ticketMode === "rsvp"
-                    ? "border-violet-500 bg-violet-50 ring-2 ring-violet-100"
-                    : "border-slate-200 bg-white hover:border-violet-200"
-                }`}
-              >
-                <b className="block text-slate-900">Free RSVP</b>
-                <span className="mt-1 block text-sm text-slate-500">
-                  Guests can reserve a place for free.
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTicketMode("sell")}
-                className={`w-full rounded-2xl border p-4 text-left transition ${
-                  ticketMode === "sell"
-                    ? "border-pink-500 bg-pink-50 ring-2 ring-pink-100"
-                    : "border-slate-200 bg-white hover:border-pink-200"
-                }`}
-              >
-                <b className="block text-slate-900">Sell Tickets</b>
-                <span className="mt-1 block text-sm text-slate-500">
-                  Define ticket price and quantity.
-                </span>
-              </button>
-
-              {ticketMode === "sell" && (
-                <div className="space-y-3 rounded-2xl border border-violet-100 bg-violet-50/50 p-4">
-                  <input
-                    required
-                    value={ticketName}
-                    onChange={(e) => setTicketName(e.target.value)}
-                    placeholder="Ticket name"
-                    className={inputClass}
+              {preview && (
+                <div className="mt-4 flex items-center gap-3 rounded-xl bg-slate-50 p-3">
+                  <img
+                    src={preview}
+                    alt="Selected flyer"
+                    className="h-16 w-20 rounded-lg object-cover"
                   />
-
-                  <input
-                    required
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="Price (INR)"
-                    className={inputClass}
-                  />
-
-                  <input
-                    required
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    placeholder="Quantity"
-                    className={inputClass}
-                  />
-
-                  <p className="text-xs text-slate-500">
-                    Online payments require a payment provider integration.
-                  </p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">
+                      {flyer?.name || template || "Selected flyer"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Preview updates automatically
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={removeFlyer}
+                    className="text-sm font-bold text-rose-600"
+                  >
+                    Remove
+                  </button>
                 </div>
               )}
 
-              <label className="block text-sm font-semibold text-slate-700">
-                Organization name
-
-                {organization ? (
-                  <div className="mt-2 rounded-xl border border-violet-100 bg-violet-50 p-3 font-medium">
-                    {organization.name}
-                  </div>
-                ) : (
-                  <input
-                    required
-                    value={organizationName}
-                    onChange={(e) =>
-                      setOrganizationName(e.target.value)
-                    }
-                    placeholder="Your organization name"
-                    className={`${inputClass} mt-2 font-normal`}
-                  />
-                )}
-              </label>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setError("");
-                  setStep(2);
-                }}
-                className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 p-4 font-bold text-white shadow-lg shadow-violet-100 transition hover:brightness-105"
-              >
-                Continue to flyer →
-              </button>
-            </section>
-          )}
-
-          {step === 2 && (
-            <section className="space-y-5 rounded-3xl border border-violet-100 bg-white p-5 shadow-sm sm:p-7">
-              <div>
-                <h2 className="text-xl font-bold">Choose your event flyer</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Browse the gallery or upload your own. Add more templates
-                  in Supabase Storage.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <input
-                  type="search"
-                  value={flyerSearch}
-                  onChange={(e) => setFlyerSearch(e.target.value)}
-                  placeholder="Search all flyers..."
-                  aria-label="Search flyer templates"
-                  className={inputClass}
-                />
-
-                <select
-                  value={flyerCategory}
-                  onChange={(e) => setFlyerCategory(e.target.value)}
-                  aria-label="Filter flyer category"
-                  className={inputClass}
-                >
-                  {["All", ...CATEGORIES].map((name) => (
-                    <option key={name} value={name}>
-                      {name === "All" ? "All flyer categories" : name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                {visibleFlyers.map((item) => (
-                  <button
-                    key={item.image}
-                    type="button"
-                    onClick={() => selectTemplate(item)}
-                    className={`overflow-hidden rounded-2xl border bg-white text-left transition ${
-                      template === item.name
-                        ? "border-violet-500 ring-2 ring-violet-200"
-                        : "border-slate-200 hover:border-violet-300"
-                    }`}
-                  >
-                    <img
-                      src={item.image}
-                      alt={item.name}
-                      loading="lazy"
-                      className="h-28 w-full object-cover sm:h-32"
+              {galleryOpen && (
+                <div className="mt-4 space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                      type="search"
+                      value={flyerSearch}
+                      onChange={(e) => setFlyerSearch(e.target.value)}
+                      placeholder="Search flyers…"
+                      className={inputClass}
                     />
+                    <select
+                      value={flyerCategory}
+                      onChange={(e) => setFlyerCategory(e.target.value)}
+                      className={inputClass}
+                    >
+                      {["All", ...CATEGORIES].map((c) => (
+                        <option key={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                    <span className="block truncate p-2 text-sm font-semibold text-slate-700">
-                      {item.name}
-                    </span>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {visibleFlyers.map((item) => (
+                      <button
+                        key={item.image}
+                        type="button"
+                        onClick={() => selectTemplate(item)}
+                        className={`overflow-hidden rounded-xl border text-left ${
+                          template === item.name
+                            ? "border-violet-500 ring-2 ring-violet-100"
+                            : "border-slate-200"
+                        }`}
+                      >
+                        <img
+                          src={item.image}
+                          alt={item.name}
+                          className="h-28 w-full object-cover"
+                        />
+                        <span className="block truncate p-2 text-xs font-bold">
+                          {item.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
 
-                    <span className="block px-2 pb-2 text-xs text-slate-400">
-                      {item.category}
-                    </span>
-                  </button>
-                ))}
-              </div>
+                  {templatesLoading && (
+                    <p className="text-sm text-slate-500">
+                      Loading flyer gallery…
+                    </p>
+                  )}
 
-              {templatesLoading && (
-                <p className="text-sm text-slate-500">
-                  Loading flyer gallery…
-                </p>
-              )}
-
-              {!templatesLoading && visibleFlyers.length === 0 && (
-                <p className="rounded-xl bg-violet-50 p-4 text-center text-sm text-slate-600">
-                  No flyers match your search. Try another category or
-                  upload your own.
-                </p>
+                  {!templatesLoading && visibleFlyers.length === 0 && (
+                    <p className="text-sm text-slate-500">
+                      No matching flyers found.
+                    </p>
+                  )}
+                </div>
               )}
 
               <button
                 type="button"
                 onClick={() => fileInput.current?.click()}
-                className="w-full rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50/50 p-5 text-center transition hover:border-violet-400 hover:bg-violet-50"
+                className="mt-4 w-full rounded-xl border-2 border-dashed border-violet-200 bg-violet-50/60 p-4 text-sm font-bold text-violet-700 hover:bg-violet-50"
               >
-                <span className="block text-lg font-bold text-violet-700">
-                  ＋ Upload your flyer
-                </span>
-
-                <span className="mt-1 block text-sm text-slate-500">
-                  JPG, PNG, WEBP or AVIF · max 5 MB
-                </span>
+                ＋ Upload your flyer · JPG, PNG, WEBP or AVIF · max 5 MB
               </button>
 
               <input
@@ -782,238 +1097,195 @@ export default function OrganizePage() {
                 onChange={handleFlyer}
                 className="hidden"
               />
+            </section>
 
-              {preview && (
-                <div className="rounded-2xl border border-violet-100 bg-slate-50 p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <b className="text-slate-800">Flyer preview</b>
+            <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-6">
+              <label className="block text-sm font-semibold">
+                Organizer / Organization name
+                {organization && (
+                  <span className="ml-2 font-normal text-slate-500">
+                    ({organization.name})
+                  </span>
+                )}
+                {!organization && (
+                  <input
+                    value={organizationName}
+                    onChange={(e) => setOrganizationName(e.target.value)}
+                    placeholder="Your organization name"
+                    className={inputClass}
+                  />
+                )}
+              </label>
+            </section>
+          </div>
 
-                    <button
-                      type="button"
-                      onClick={removeFlyer}
-                      className="text-sm font-semibold text-rose-600"
-                    >
-                      Remove
-                    </button>
-                  </div>
+          <aside
+            className={`min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5 xl:sticky xl:top-24 ${
+              previewMode === "mobile"
+                ? "mx-auto w-full max-w-[390px]"
+                : ""
+            }`}
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-extrabold">Event Preview</h2>
+                <p className="text-xs text-slate-500">
+                  How your event will appear to attendees
+                </p>
+              </div>
+              <span className="text-xl text-violet-600">◉</span>
+            </div>
 
+            <div className="mb-4 flex justify-end rounded-xl bg-slate-50 p-1">
+              <button
+                type="button"
+                onClick={() => setPreviewMode("desktop")}
+                className={`rounded-lg px-3 py-2 text-xs font-bold ${
+                  previewMode === "desktop"
+                    ? "bg-white text-violet-700 shadow-sm"
+                    : "text-slate-500"
+                }`}
+              >
+                ▣ Desktop
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewMode("mobile")}
+                className={`rounded-lg px-3 py-2 text-xs font-bold ${
+                  previewMode === "mobile"
+                    ? "bg-white text-violet-700 shadow-sm"
+                    : "text-slate-500"
+                }`}
+              >
+                ▯ Mobile
+              </button>
+            </div>
+
+            <article className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+              <div className="relative bg-gradient-to-br from-violet-200 to-pink-200">
+                {preview ? (
                   <img
                     src={preview}
-                    alt="Selected event flyer preview"
-                    className="mx-auto max-h-64 max-w-full rounded-xl object-contain sm:max-h-80"
+                    alt="Event flyer preview"
+                    className={`w-full object-cover ${
+                      previewMode === "mobile" ? "max-h-56" : "max-h-72"
+                    }`}
                   />
-
-                  <p className="mt-2 break-words text-center text-xs text-slate-500">
-                    {flyer ? flyer.name : `${template} sample flyer`}
-                  </p>
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError("");
-                    setStep(1);
-                  }}
-                  className="w-1/3 rounded-xl border border-slate-200 p-4 font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Back
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!preview) {
-                      setError("Choose a flyer or upload your own image.");
-                      return;
-                    }
-
-                    setError("");
-                    setStep(3);
-                  }}
-                  className="flex-1 rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 p-4 font-bold text-white"
-                >
-                  Continue to details →
-                </button>
-              </div>
-            </section>
-          )}
-
-          {step === 3 && (
-            <>
-              <section className="space-y-4 rounded-3xl border border-violet-100 bg-white p-5 shadow-sm sm:p-7">
-                <h2 className="text-xl font-bold">
-                  Event details & description
-                </h2>
-
-                {preview && (
-                  <div className="flex items-center gap-3 rounded-xl bg-violet-50 p-3">
-                    <img
-                      src={preview}
-                      alt="Flyer thumbnail"
-                      className="h-16 w-12 rounded-lg object-cover"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() => setStep(2)}
-                      className="text-sm font-semibold text-violet-700"
-                    >
-                      Change flyer
-                    </button>
+                ) : (
+                  <div className="grid min-h-48 place-items-center p-6 text-center">
+                    <span>
+                      <span className="block text-4xl">✦</span>
+                      <span className="mt-2 block font-bold text-violet-800">
+                        Your event flyer appears here
+                      </span>
+                      <span className="mt-1 block text-xs text-violet-700">
+                        Choose a template or upload an image
+                      </span>
+                    </span>
                   </div>
                 )}
 
-                <input
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Event name *"
-                  className={inputClass}
-                />
+                <span className="absolute left-3 top-3 rounded-xl bg-white px-3 py-2 text-center text-xs font-black text-slate-900">
+                  {startsAt
+                    ? new Date(startsAt)
+                        .toLocaleDateString([], {
+                          month: "short",
+                          day: "numeric",
+                        })
+                        .toUpperCase()
+                    : "DATE"}
+                </span>
 
-                <textarea
-                  required
-                  rows={4}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Event description *"
-                  className={inputClass}
-                />
-
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className={inputClass}
-                >
-                  {CATEGORIES.map((itemCategory) => (
-                    <option key={itemCategory} value={itemCategory}>
-                      {itemCategory}
-                    </option>
-                  ))}
-                </select>
-              </section>
-
-              <section className="space-y-4 rounded-3xl border border-violet-100 bg-white p-5 shadow-sm sm:p-7">
-                <h2 className="text-xl font-bold">
-                  Location — worldwide
-                </h2>
-
-                <input
-                  required
-                  value={address}
-                  onChange={(e) => {
-                    setAddress(e.target.value);
-                    setSelectedPlace(null);
-                  }}
-                  placeholder="Search city, country or address *"
-                  autoComplete="off"
-                  className={inputClass}
-                />
-
-                {places.map((place, index) => (
-                  <button
-                    key={
-                      place.properties?.osm_id ||
-                      `${place.properties?.name || "place"}-${index}`
-                    }
-                    type="button"
-                    onClick={() => choosePlace(place)}
-                    className="block w-full rounded-xl border border-slate-200 p-3 text-left transition hover:border-violet-300 hover:bg-violet-50"
-                  >
-                    <span className="block font-semibold text-slate-800">
-                      {place.properties?.name ||
-                        place.properties?.street ||
-                        "Location"}
-                    </span>
-
-                    <span className="mt-1 block text-sm text-slate-500">
-                      {[
-                        place.properties?.city ||
-                          place.properties?.town ||
-                          place.properties?.village,
-                        place.properties?.state,
-                        place.properties?.country,
-                      ]
-                        .filter(Boolean)
-                        .join(", ")}
-                    </span>
-                  </button>
-                ))}
-
-                {selectedPlace && (
-                  <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">
-                    Selected: {selectedPlace.label}
-                  </p>
-                )}
-
-                <input
-                  value={venue}
-                  onChange={(e) => setVenue(e.target.value)}
-                  placeholder="Venue name (optional)"
-                  className={inputClass}
-                />
-              </section>
-
-              <section className="space-y-4 rounded-3xl border border-violet-100 bg-white p-5 shadow-sm sm:p-7">
-                <h2 className="text-xl font-bold">Date and time</h2>
-
-                <label className="block text-sm font-semibold text-slate-700">
-                  Starts *
-                  <input
-                    required
-                    type="datetime-local"
-                    value={startsAt}
-                    onChange={(e) => setStartsAt(e.target.value)}
-                    className={`${inputClass} mt-2 font-normal`}
-                  />
-                </label>
-
-                <label className="block text-sm font-semibold text-slate-700">
-                  Ends
-                  <input
-                    type="datetime-local"
-                    min={startsAt || undefined}
-                    value={endsAt}
-                    onChange={(e) => setEndsAt(e.target.value)}
-                    className={`${inputClass} mt-2 font-normal`}
-                  />
-                </label>
-              </section>
-
-              <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setError("");
-                    setStep(2);
-                  }}
-                  className="w-1/3 rounded-xl border border-slate-200 p-4 font-semibold text-slate-700 hover:bg-slate-50"
+                  aria-label="Favorite preview"
+                  className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-black/20 text-xl text-white"
                 >
-                  Back
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 p-4 font-bold text-white shadow-lg shadow-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loading ? "Publishing..." : "Publish event"}
+                  ♡
                 </button>
               </div>
-            </>
-          )}
 
-          {error && (
+              <div className="p-4">
+                <div className="mb-2 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">
+                    ♫ {category}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
+                    {ticketMode === "rsvp" ? "Free RSVP" : "Tickets"}
+                  </span>
+                </div>
+
+                <h3 className="break-words text-xl font-black leading-tight">
+                  {title || "Your Event Title"}
+                </h3>
+
+                <p className="mt-3 text-sm text-slate-500">
+                  ▦ {formatDate(startsAt)}
+                  {endsAt ? " – " + formatDate(endsAt) : ""}
+                </p>
+
+                <p className="mt-2 break-words text-sm text-slate-500">
+                  ⌖ {selectedPlace?.label || "Your event location"}
+                </p>
+
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <p className="text-xs font-bold text-slate-500">ORGANIZER</p>
+                  <p className="mt-1 font-bold">
+                    {organization?.name ||
+                      organizationName ||
+                      "Your Organization"}
+                  </p>
+                </div>
+
+                <h4 className="mt-5 font-extrabold">About This Event</h4>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
+                  {description ||
+                    "Your event description will appear here. Add details to help attendees know what to expect."}
+                </p>
+
+                <div className="mt-5 rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs font-bold text-slate-500">LOCATION</p>
+                  <p className="mt-1 break-words text-sm font-semibold">
+                    {venue || selectedPlace?.label || "Your event venue"}
+                  </p>
+                  <p className="mt-1 break-words text-xs text-slate-500">
+                    {selectedPlace?.label ||
+                      "Select a location to show it here"}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSection("tickets")}
+                  className="mt-4 w-full rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 p-3 font-bold text-white"
+                >
+                  {ticketMode === "rsvp"
+                    ? "RSVP for Free"
+                    : `Tickets · ₹${price || "0"}`}
+                </button>
+              </div>
+            </article>
+
+            <p className="mt-3 text-xs leading-5 text-slate-400">
+              Preview only. Final appearance depends on your public event page.
+            </p>
+          </aside>
+        </form>
+
+        {(error || notice) && (
+          <div className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2">
             <p
               role="alert"
-              className="break-words rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"
+              className={`rounded-xl border p-4 text-sm font-semibold shadow-xl ${
+                error
+                  ? "border-rose-200 bg-rose-50 text-rose-800"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-800"
+              }`}
             >
-              {error}
+              {error || notice}
             </p>
-          )}
-        </form>
+          </div>
+        )}
       </div>
     </main>
   );
