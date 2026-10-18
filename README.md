@@ -21,3 +21,4 @@ Every event is assigned `expires_at = starts_at + 24 hours`. The Vercel cron end
 - Add a transactional email provider for ticket emails.
 - Add a payment provider only when paid tickets are needed.
 - Add storage policies if organizers upload images directly to Supabase Storage.
+
