@@ -3,1292 +3,827 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabaseBrowser as supabase } from "../lib/supabase";
 
 const CATEGORIES = [
-  "All",
-  "Music",
-  "Nightlife",
-  "Business",
-  "Food & Drink",
-  "Arts",
-  "Sports",
-  "Community",
-  "Other",
+  { name: "Music", icon: "♫", color: "violet" },
+  { name: "Nightlife", icon: "♬", color: "pink" },
+  { name: "Food & Drink", icon: "♨", color: "orange" },
+  { name: "Arts & Culture", icon: "▧", color: "blue" },
+  { name: "Workshops", icon: "✧", color: "pink" },
+  { name: "Business", icon: "▣", color: "blue" },
+  { name: "Sports", icon: "◎", color: "green" },
+  { name: "More", icon: "•••", color: "violet" },
 ];
 
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1000&q=80";
+const SAMPLE_EVENTS = [
+  {
+    title: "Neon Nights Music Festival",
+    category: "Music",
+    city: "New York",
+    image:
+      "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=85",
+    price: "Explore event",
+  },
+  {
+    title: "Sunset Beach Party",
+    category: "Nightlife",
+    city: "Los Angeles",
+    image:
+      "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=900&q=85",
+    price: "Free RSVP",
+  },
+  {
+    title: "Tech & AI Workshop",
+    category: "Workshops",
+    city: "San Francisco",
+    image:
+      "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=900&q=85",
+    price: "Explore event",
+  },
+  {
+    title: "Urban Art Festival",
+    category: "Arts & Culture",
+    city: "Chicago",
+    image:
+      "https://images.unsplash.com/photo-1531058020387-3be344556be6?auto=format&fit=crop&w=900&q=85",
+    price: "Explore event",
+  },
+];
+
+const HERO_IMAGE =
+  "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1800&q=90";
 
 export default function HomePage() {
   const router = useRouter();
 
-  const [session, setSession] = useState(null);
-  const [authReady, setAuthReady] = useState(false);
   const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [session, setSession] = useState(null);
   const [search, setSearch] = useState("");
   const [city, setCity] = useState("");
   const [category, setCategory] = useState("All");
+  const [loading, setLoading] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [favorites, setFavorites] = useState([]);
-  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     let active = true;
 
-    async function checkSession() {
-      const { data, error: sessionError } =
-        await supabase.auth.getSession();
+    async function loadPage() {
+      try {
+        const { data: authData } = await supabase.auth.getSession();
 
-      if (!active) return;
+        if (active) setSession(authData?.session || null);
 
-      if (sessionError || !data.session) {
-        router.replace("/auth");
-        return;
+        let result = await supabase
+          .from("events")
+          .select("*")
+          .eq("status", "published")
+          .order("starts_at", { ascending: true })
+          .limit(24);
+
+        // Fallback if this project uses a different date column.
+        if (result.error) {
+          result = await supabase
+            .from("events")
+            .select("*")
+            .eq("status", "published")
+            .limit(24);
+        }
+
+        if (active && !result.error) {
+          setEvents(result.data || []);
+        }
+      } catch (error) {
+        console.error("VYBE home load error:", error);
+      } finally {
+        if (active) setLoading(false);
       }
-
-      setSession(data.session);
-      setAuthReady(true);
     }
 
-    checkSession();
+    loadPage();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      if (!active) return;
-
-      if (!newSession) {
-        setSession(null);
-        router.replace("/auth");
-        return;
-      }
-
-      setSession(newSession);
-      setAuthReady(true);
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession || null);
     });
 
     return () => {
       active = false;
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, []);
 
-  useEffect(() => {
-    if (!authReady || !session) return;
+  const visibleEvents = useMemo(() => {
+    const allEvents = events.length
+      ? events.map((event) => ({
+          ...event,
+          title: event.title || "Untitled event",
+          category: event.category || "Events",
+          city: event.city || event.location_address || "",
+          image:
+            event.image_url ||
+            "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=85",
+          price:
+            event.ticket_mode === "sell"
+              ? `${event.currency || "₹"} ${event.price ?? 0}`
+              : "Free RSVP",
+        }))
+      : SAMPLE_EVENTS;
 
-    let active = true;
-
-    async function loadEvents() {
-      setLoading(true);
-      setError("");
-
-      const { data, error: eventError } = await supabase
-        .from("events")
-        .select("*")
-        .eq("status", "published")
-        .order("created_at", { ascending: false });
-
-      if (!active) return;
-
-      if (eventError) {
-        setError(
-          "Events load nahi ho paaye. Database table aur permissions check karein."
-        );
-        setEvents([]);
-      } else {
-        setEvents(data || []);
-      }
-
-      setLoading(false);
-    }
-
-    loadEvents();
-
-    return () => {
-      active = false;
-    };
-  }, [authReady, session]);
-
-  const filteredEvents = useMemo(() => {
-    const searchText = search.trim().toLowerCase();
-    const cityText = city.trim().toLowerCase();
-
-    return events.filter((event) => {
-      const title = String(event.title || event.name || "").toLowerCase();
-      const description = String(event.description || "").toLowerCase();
-      const eventCity = String(
-        event.city || event.location || ""
-      ).toLowerCase();
-      const eventCategory = String(
-        event.category || "Other"
-      ).toLowerCase();
-
-      const matchesSearch =
-        !searchText ||
-        title.includes(searchText) ||
-        description.includes(searchText) ||
-        eventCity.includes(searchText);
-
-      const matchesCity =
-        !cityText || eventCity.includes(cityText);
-
+    return allEvents.filter((event) => {
+      const text = `${event.title} ${event.category} ${event.city || ""}`;
+      const matchesSearch = text
+        .toLowerCase()
+        .includes(search.trim().toLowerCase());
+      const matchesCity = !city.trim() ||
+        String(event.city || "")
+          .toLowerCase()
+          .includes(city.trim().toLowerCase());
       const matchesCategory =
         category === "All" ||
-        eventCategory === category.toLowerCase();
+        event.category?.toLowerCase() === category.toLowerCase();
 
       return matchesSearch && matchesCity && matchesCategory;
     });
   }, [events, search, city, category]);
 
-  async function handleLogout() {
-    setLoggingOut(true);
-
-    const { error: logoutError } = await supabase.auth.signOut();
-
-    if (logoutError) {
-      setError("Logout nahi hua. Dobara try karein.");
-      setLoggingOut(false);
-      return;
-    }
-
-    router.replace("/auth");
-  }
-
-  function toggleFavorite(id) {
-    setFavorites((previous) =>
-      previous.includes(id)
-        ? previous.filter((item) => item !== id)
-        : [...previous, id]
-    );
-  }
-
-  function getEventImage(event) {
-    return (
-      event.flyer_url ||
-      event.flyer ||
-      event.image_url ||
-      event.image ||
-      FALLBACK_IMAGE
-    );
-  }
-
-  function getEventLocation(event) {
-    return (
-      event.venue ||
-      event.address ||
-      event.city ||
-      event.location ||
-      "Location to be announced"
-    );
-  }
-
-  function getEventDate(event) {
-    const rawDate =
-      event.start_date ||
-      event.event_date ||
-      event.starts_at ||
-      event.date;
-
-    if (!rawDate) return "Date to be announced";
-
-    const parsedDate = new Date(rawDate);
-
-    if (Number.isNaN(parsedDate.getTime())) {
-      return String(rawDate);
-    }
-
-    return parsedDate.toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
+  async function logOut() {
+    await supabase.auth.signOut();
+    router.push("/auth");
   }
 
   function openEvent(event) {
-    const slug = event.slug || event.id;
-    if (slug) router.push(`/event/${slug}`);
-  }
-
-  if (!authReady) {
-    return (
-      <main className="loading-screen">
-        <div className="loading-logo">VYBE</div>
-        <p>Checking your login...</p>
-        <style jsx>{`
-          .loading-screen {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            background: #090914;
-            color: #fff;
-            font-family: Arial, sans-serif;
-          }
-          .loading-logo {
-            font-size: 42px;
-            font-weight: 900;
-            letter-spacing: 5px;
-            color: #b79aff;
-          }
-        `}</style>
-      </main>
-    );
+    if (event.slug) router.push(`/events/${event.slug}`);
+    else router.push("/events");
   }
 
   return (
-    <main className="page">
-      <header className="navbar">
+    <main className="vybe-home">
+      <style jsx global>{`
+        * { box-sizing: border-box; }
+        body {
+          margin: 0;
+          background: #fff;
+          color: #17152b;
+          font-family: Arial, Helvetica, sans-serif;
+        }
+        .vybe-home {
+          min-height: 100vh;
+          overflow: hidden;
+          background:
+            radial-gradient(ellipse at 5% 0%, #f0e6ff 0, transparent 34%),
+            radial-gradient(ellipse at 100% 25%, #ffe7f4 0, transparent 30%),
+            #fff;
+          color: #17152b;
+        }
+        .vybe-wrap { width: min(1320px, calc(100% - 48px)); margin: auto; }
+        .vybe-header {
+          position: sticky; top: 0; z-index: 30;
+          display: flex; align-items: center; gap: 24px;
+          min-height: 76px; padding: 12px max(24px, calc((100vw - 1320px)/2));
+          background: rgba(255,255,255,.94);
+          border-bottom: 1px solid #eee7f6;
+          backdrop-filter: blur(18px);
+        }
+        .vybe-logo {
+          flex-shrink: 0; border: 0; background: transparent;
+          font-size: 29px; line-height: 1; font-weight: 950;
+          letter-spacing: -1.5px; color: #7434ec; cursor: pointer;
+        }
+        .vybe-logo span { color: #ef2c9b; }
+        .vybe-nav { display: flex; align-items: center; gap: 23px; }
+        .vybe-nav a {
+          color: #4d4860; text-decoration: none; font-size: 13px;
+          font-weight: 750; white-space: nowrap;
+        }
+        .vybe-nav a:hover { color: #7939ee; }
+        .vybe-header-search {
+          display: flex; align-items: center; gap: 8px;
+          min-width: 160px; max-width: 240px; flex: 1;
+          border: 1px solid #e9e3f1; border-radius: 999px;
+          background: #faf9fd; padding: 10px 14px;
+        }
+        .vybe-header-search input {
+          width: 100%; min-width: 0; border: 0; outline: 0;
+          background: transparent; color: #211b36; font-size: 12px;
+        }
+        .vybe-header-right {
+          display: flex; align-items: center; gap: 10px; margin-left: auto;
+        }
+        .vybe-gradient {
+          border: 0; border-radius: 13px; color: white; cursor: pointer;
+          font-weight: 800; text-decoration: none;
+          background: linear-gradient(110deg, #7138f5, #ed269d);
+          box-shadow: 0 8px 22px #a45bf12b;
+          transition: transform .2s, box-shadow .2s;
+        }
+        .vybe-gradient:hover { transform: translateY(-1px); box-shadow: 0 10px 25px #a45bf144; }
+        .vybe-create { padding: 13px 18px; font-size: 13px; white-space: nowrap; }
+        .vybe-icon-btn {
+          width: 39px; height: 39px; border: 1px solid #eee7f6;
+          border-radius: 50%; background: white; color: #4e4265;
+          cursor: pointer; font-size: 17px;
+        }
+        .vybe-avatar {
+          width: 38px; height: 38px; border-radius: 50%;
+          display: grid; place-items: center; background: #f0e6ff;
+          color: #7434ec; font-weight: 900;
+        }
+        .vybe-mobile-menu { display: none; }
+        .vybe-hero {
+          display: grid; grid-template-columns: 1fr 1fr; gap: 36px;
+          align-items: center; padding-top: 40px; padding-bottom: 34px;
+        }
+        .vybe-eyebrow {
+          display: inline-flex; align-items: center; gap: 9px;
+          color: #7c42e8; font-size: 11px; font-weight: 900;
+          letter-spacing: 2.4px; text-transform: uppercase;
+        }
+        .vybe-eyebrow:before {
+          content: ""; width: 8px; height: 8px; border-radius: 50%;
+          background: #ed319e; box-shadow: 0 0 0 5px #f7e8ff;
+        }
+        .vybe-hero h1 {
+          margin: 20px 0 16px; max-width: 700px;
+          font-size: clamp(43px, 5.4vw, 76px); line-height: .99;
+          letter-spacing: -3.6px; font-weight: 950;
+        }
+        .vybe-hero h1 span {
+          display: block;
+          background: linear-gradient(100deg, #7434f4 4%, #c23fe9 52%, #f02a9b 100%);
+          color: transparent; background-clip: text; -webkit-background-clip: text;
+        }
+        .vybe-hero-copy {
+          max-width: 530px; color: #777187; font-size: 16px;
+          line-height: 1.8; margin: 0 0 22px;
+        }
+        .vybe-search-card {
+          padding: 10px; display: grid; gap: 8px;
+          grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto;
+          border: 1px solid #e9e1f4; border-radius: 18px;
+          background: white; box-shadow: 0 14px 42px #54229c0c;
+        }
+        .vybe-search-field {
+          display: flex; align-items: center; gap: 9px;
+          padding: 12px; min-width: 0; color: #8d5bf0;
+        }
+        .vybe-search-field input {
+          width: 100%; min-width: 0; outline: 0; border: 0;
+          background: transparent; color: #28223a; font-size: 13px;
+        }
+        .vybe-search-button { padding: 0 22px; min-height: 47px; font-size: 13px; }
+        .vybe-popular {
+          display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+          margin-top: 15px; color: #888098; font-size: 12px;
+        }
+        .vybe-chip {
+          border: 1px solid #eee7f7; border-radius: 999px; background: white;
+          padding: 7px 11px; color: #6e647e; cursor: pointer; font-size: 11px;
+        }
+        .vybe-chip:hover { border-color: #c8a7ff; color: #7938ed; }
+        .vybe-art { position: relative; min-width: 0; }
+        .vybe-main-photo {
+          position: relative; overflow: hidden; border-radius: 25px;
+          height: 355px; background: #261042; box-shadow: 0 20px 50px #4b1d751b;
+        }
+        .vybe-main-photo:after {
+          content: ""; position: absolute; inset: 0;
+          background: linear-gradient(0deg, #19082b9c, transparent 65%),
+            linear-gradient(90deg, #2e0b4c38, transparent);
+        }
+        .vybe-main-photo img { width: 100%; height: 100%; object-fit: cover; }
+        .vybe-photo-caption {
+          position: absolute; z-index: 1; left: 25px; bottom: 24px;
+          color: white; font-size: clamp(25px, 3vw, 39px);
+          font-weight: 950; line-height: 1.05; letter-spacing: -1px;
+        }
+        .vybe-photo-caption span { color: #e9a4ff; }
+        .vybe-floating {
+          position: absolute; right: -13px; top: 20px; z-index: 2;
+          display: flex; align-items: center; gap: 8px;
+          padding: 10px 14px; border: 1px solid #ffffffa3;
+          border-radius: 15px; background: #ffffffed;
+          box-shadow: 0 10px 35px #19072c20; font-size: 11px; font-weight: 850;
+        }
+        .vybe-floating strong { color: #8438eb; font-size: 18px; }
+        .vybe-art-badges {
+          display: grid; grid-template-columns: repeat(3, 1fr);
+          gap: 10px; margin-top: 12px;
+        }
+        .vybe-art-badge {
+          display: flex; align-items: center; gap: 8px; min-width: 0;
+          border: 1px solid #eee6f7; border-radius: 13px;
+          padding: 9px; background: white; color: #40364f;
+          font-size: 11px; font-weight: 800;
+        }
+        .vybe-art-badge img {
+          width: 35px; height: 35px; border-radius: 9px; object-fit: cover;
+        }
+        .vybe-section { padding: 25px 0 38px; }
+        .vybe-section-head {
+          display: flex; align-items: end; justify-content: space-between;
+          gap: 15px; margin-bottom: 18px;
+        }
+        .vybe-section-head h2 {
+          margin: 0; color: #1b1730; font-size: 25px;
+          font-weight: 950; letter-spacing: -.8px;
+        }
+        .vybe-section-head p { margin: 6px 0 0; color: #8a8397; font-size: 13px; }
+        .vybe-view-all {
+          color: #8039ed; text-decoration: none; font-size: 12px;
+          font-weight: 850; white-space: nowrap;
+        }
+        .vybe-categories {
+          display: grid; grid-template-columns: repeat(8, minmax(0, 1fr));
+          gap: 14px;
+        }
+        .vybe-category {
+          display: flex; flex-direction: column; align-items: center; gap: 9px;
+          padding: 15px 6px; border: 1px solid #f0eaf7; border-radius: 17px;
+          background: #fff; cursor: pointer; color: #484054;
+          font-size: 11px; font-weight: 800; transition: .2s;
+        }
+        .vybe-category:hover, .vybe-category.active {
+          transform: translateY(-2px); border-color: #d5b6ff;
+          box-shadow: 0 9px 24px #7434f40e; color: #7434ec;
+        }
+        .vybe-category-icon {
+          display: grid; place-items: center; width: 43px; height: 43px;
+          border-radius: 14px; font-size: 23px; font-weight: 900;
+          background: #f1e9ff; color: #7838ee;
+        }
+        .vybe-category-icon.pink { background: #ffe9f5; color: #e92c9b; }
+        .vybe-category-icon.orange { background: #fff1df; color: #e88b21; }
+        .vybe-category-icon.blue { background: #e7f0ff; color: #3875ed; }
+        .vybe-category-icon.green { background: #e6f8ee; color: #20a96a; }
+        .vybe-events {
+          display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 17px;
+        }
+        .vybe-event {
+          min-width: 0; overflow: hidden; border: 1px solid #eee8f6;
+          border-radius: 17px; background: white; cursor: pointer;
+          transition: transform .2s, box-shadow .2s;
+        }
+        .vybe-event:hover { transform: translateY(-3px); box-shadow: 0 13px 35px #3d175b14; }
+        .vybe-event-image { height: 175px; position: relative; background: #eee6f8; }
+        .vybe-event-image img { width: 100%; height: 100%; object-fit: cover; }
+        .vybe-event-date {
+          position: absolute; top: 11px; left: 11px; display: grid;
+          place-items: center; min-width: 43px; padding: 7px 6px;
+          border-radius: 10px; background: #ffffffed; color: #8039ed;
+          font-size: 10px; font-weight: 900; text-align: center;
+        }
+        .vybe-heart {
+          position: absolute; top: 10px; right: 10px; width: 34px; height: 34px;
+          border: 0; border-radius: 50%; background: #ffffffeb; color: #a99ab7;
+          cursor: pointer; font-size: 17px;
+        }
+        .vybe-heart.active { color: #ec2b9c; }
+        .vybe-event-body { padding: 13px; }
+        .vybe-event-body h3 {
+          margin: 0 0 8px; font-size: 14px; font-weight: 900;
+          line-height: 1.4; color: #211a34;
+        }
+        .vybe-event-location { color: #8b8398; font-size: 11px; }
+        .vybe-event-bottom {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 6px; margin-top: 13px;
+        }
+        .vybe-event-tag {
+          border-radius: 999px; background: #f3eaff; color: #7b3ce9;
+          padding: 5px 8px; font-size: 10px; font-weight: 800;
+        }
+        .vybe-price { color: #302641; font-size: 11px; font-weight: 900; }
+        .vybe-empty {
+          grid-column: 1/-1; border: 1px dashed #ded0ef; border-radius: 17px;
+          padding: 30px; text-align: center; color: #82768f; background: #fff;
+        }
+        .vybe-bottom-cta {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 20px; margin: 12px 0 45px; padding: 30px;
+          border: 1px solid #e8d9ff; border-radius: 24px;
+          background: linear-gradient(110deg, #f4edff, #fff0f8);
+        }
+        .vybe-bottom-cta h2 { margin: 0 0 7px; font-size: 23px; font-weight: 950; }
+        .vybe-bottom-cta p { margin: 0; color: #7d718e; font-size: 13px; }
+        .vybe-footer {
+          border-top: 1px solid #eee6f6; padding: 24px 0 32px;
+          color: #91879f; font-size: 12px;
+        }
+        @media (max-width: 1050px) {
+          .vybe-header { gap: 13px; }
+          .vybe-nav { gap: 12px; }
+          .vybe-header-search { max-width: 180px; }
+          .vybe-hero { gap: 24px; }
+          .vybe-categories { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+          .vybe-events { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 760px) {
+          .vybe-wrap { width: calc(100% - 28px); }
+          .vybe-header {
+            min-height: 65px; padding: 12px 14px; gap: 10px;
+          }
+          .vybe-logo { font-size: 25px; }
+          .vybe-nav, .vybe-header-search, .vybe-header-right .vybe-icon-btn,
+          .vybe-header-right .vybe-create, .vybe-desktop-only { display: none; }
+          .vybe-mobile-menu { display: block; margin-left: auto; }
+          .vybe-header-right { margin-left: 0; }
+          .vybe-hero { grid-template-columns: 1fr; gap: 23px; padding-top: 26px; }
+          .vybe-eyebrow { font-size: 9px; letter-spacing: 1.5px; }
+          .vybe-hero h1 {
+            margin: 17px 0 12px; font-size: clamp(42px, 11vw, 61px);
+            letter-spacing: -2.4px; line-height: 1.02;
+          }
+          .vybe-hero-copy { font-size: 14px; line-height: 1.65; margin-bottom: 17px; }
+          .vybe-search-card {
+            grid-template-columns: 1fr; gap: 0; padding: 9px;
+            border-radius: 17px;
+          }
+          .vybe-search-field { border-bottom: 1px solid #f0e9f7; padding: 13px 8px; }
+          .vybe-search-button { min-height: 46px; margin-top: 9px; }
+          .vybe-popular { gap: 6px; margin-top: 12px; }
+          .vybe-chip { padding: 7px 9px; }
+          .vybe-main-photo { height: 245px; border-radius: 19px; }
+          .vybe-floating { right: 8px; top: 10px; }
+          .vybe-photo-caption { left: 18px; bottom: 19px; font-size: 30px; }
+          .vybe-art-badges { gap: 7px; }
+          .vybe-art-badge { padding: 7px 6px; gap: 5px; font-size: 9px; }
+          .vybe-art-badge img { width: 27px; height: 27px; }
+          .vybe-section { padding: 20px 0 24px; }
+          .vybe-section-head { margin-bottom: 14px; }
+          .vybe-section-head h2 { font-size: 21px; }
+          .vybe-section-head p { font-size: 11px; line-height: 1.5; }
+          .vybe-categories { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+          .vybe-category { gap: 7px; padding: 11px 3px; border-radius: 13px; font-size: 10px; }
+          .vybe-category-icon { width: 37px; height: 37px; border-radius: 12px; font-size: 20px; }
+          .vybe-events { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+          .vybe-event { border-radius: 13px; }
+          .vybe-event-image { height: 135px; }
+          .vybe-event-date { top: 7px; left: 7px; min-width: 36px; padding: 5px; font-size: 9px; }
+          .vybe-heart { top: 7px; right: 7px; width: 29px; height: 29px; }
+          .vybe-event-body { padding: 10px; }
+          .vybe-event-body h3 { font-size: 12px; }
+          .vybe-event-location { font-size: 10px; }
+          .vybe-event-tag { font-size: 9px; padding: 4px 6px; }
+          .vybe-price { font-size: 10px; }
+          .vybe-bottom-cta { flex-direction: column; align-items: flex-start; padding: 21px; margin-bottom: 25px; }
+          .vybe-bottom-cta h2 { font-size: 20px; }
+        }
+      `}</style>
+
+      <header className="vybe-header">
         <button
-          className="logo"
+          type="button"
+          className="vybe-logo"
           onClick={() => router.push("/")}
           aria-label="VYBE home"
         >
           VYBE<span>.</span>
         </button>
 
-        <nav className="nav-links">
-          <a href="#discover">Discover</a>
-          <a href="#categories">Categories</a>
+        <div className="vybe-header-search">
+          <span>⌕</span>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search events, locations..."
+            aria-label="Search events"
+          />
+        </div>
+
+        <nav className="vybe-nav">
+          <Link href="/">Home</Link>
+          <Link href="/events">Explore Events</Link>
+          <a href="#categories">Categories⌄</a>
         </nav>
 
-        <div className="nav-actions">
-          <button
-            className="organize-button"
-            onClick={() => router.push("/organize")}
-          >
+        <div className="vybe-header-right">
+          <Link href="/organize" className="vybe-gradient vybe-create">
             + Create Event
-          </button>
-
+          </Link>
           <button
-            className="logout-button"
-            onClick={handleLogout}
-            disabled={loggingOut}
+            type="button"
+            className="vybe-icon-btn"
+            aria-label="Notifications"
+            title="Notifications"
           >
-            {loggingOut ? "Logging out..." : "Log out"}
+            ♧
           </button>
-        </div>
-      </header>
-
-      <section className="hero">
-        <div className="hero-content">
-          <div className="eyebrow">
-            <span className="live-dot" />
-            YOUR CITY. YOUR PEOPLE. YOUR VYBE.
-          </div>
-
-          <h1>
-            Find your
-            <br />
-            next <span>VYBE.</span>
-          </h1>
-
-          <p className="hero-description">
-            Discover events, meet your people, and make every moment count.
-          </p>
-
-          <div className="search-panel">
-            <label className="search-field">
-              <span>⌕</span>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search events, music, parties..."
-              />
-            </label>
-
-            <label className="search-field city-field">
-              <span>⌖</span>
-              <input
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="City or location"
-              />
-            </label>
-
+          {session ? (
             <button
-              className="search-button"
-              onClick={() =>
-                document
-                  .getElementById("discover")
-                  ?.scrollIntoView({ behavior: "smooth" })
-              }
+              type="button"
+              className="vybe-avatar"
+              onClick={logOut}
+              title="Log out"
+              aria-label="Log out"
             >
-              Explore Events
+              {session.user?.email?.[0]?.toUpperCase() || "V"}
             </button>
-          </div>
-
-          <div className="hero-note">
-            <span>✦</span> Discover something unforgettable
-          </div>
-        </div>
-
-        <div className="hero-art" aria-hidden="true">
-          <div className="art-glow" />
-          <div className="art-ring ring-one" />
-          <div className="art-ring ring-two" />
-          <div className="art-card card-one">
-            <span>LIVE MUSIC</span>
-            <strong>Feel the beat.</strong>
-          </div>
-          <div className="art-card card-two">
-            <span>YOUR PEOPLE</span>
-            <strong>Good times only.</strong>
-          </div>
-          <div className="art-center">
-            <span>V</span>
-            <small>FIND YOUR VYBE</small>
-          </div>
-        </div>
-      </section>
-
-      <section className="category-section" id="categories">
-        <div className="section-heading">
-          <div>
-            <p className="section-kicker">EXPLORE YOUR INTERESTS</p>
-            <h2>Find your scene</h2>
-          </div>
-        </div>
-
-        <div className="category-list">
-          {CATEGORIES.map((item) => (
-            <button
-              key={item}
-              className={`category-chip ${
-                category === item ? "selected" : ""
-              }`}
-              onClick={() => setCategory(item)}
-            >
-              {item === "All" && "✦ "}
-              {item}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="events-section" id="discover">
-        <div className="section-heading events-heading">
-          <div>
-            <p className="section-kicker">WHAT'S HAPPENING</p>
-            <h2>Discover events</h2>
-            <p className="section-subtitle">
-              The experiences everyone's talking about.
-            </p>
-          </div>
-
-          <button
-            className="text-button"
-            onClick={() => {
-              setSearch("");
-              setCity("");
-              setCategory("All");
-            }}
-          >
-            Clear filters ↗
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="message-panel">
-            <div className="spinner" />
-            <p>Finding your next VYBE...</p>
-          </div>
-        ) : error ? (
-          <div className="message-panel">
-            <p>{error}</p>
-            <button
-              className="organize-button"
-              onClick={() => window.location.reload()}
-            >
-              Try again
-            </button>
-          </div>
-        ) : filteredEvents.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">✦</div>
-            <h3>No events found</h3>
-            <p>
-              Try another search or category, or be the first to create an
-              event.
-            </p>
-            <button
-              className="organize-button"
-              onClick={() => router.push("/organize")}
-            >
-              Create an event
-            </button>
-          </div>
-        ) : (
-          <div className="event-grid">
-            {filteredEvents.map((event) => {
-              const eventId = event.id || event.slug;
-              const isFavorite = favorites.includes(eventId);
-
-              return (
-                <article
-                  className="event-card"
-                  key={eventId}
-                  onClick={() => openEvent(event)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") openEvent(event);
-                  }}
-                >
-                  <div className="event-image-wrap">
-                    <img
-                      className="event-image"
-                      src={getEventImage(event)}
-                      alt={event.title || event.name || "Event flyer"}
-                      loading="lazy"
-                      onError={(e) => {
-                        e.currentTarget.onerror = null;
-                        e.currentTarget.src = FALLBACK_IMAGE;
-                      }}
-                    />
-
-                    <span className="event-category">
-                      {event.category || "Event"}
-                    </span>
-
-                    <button
-                      className={`favorite-button ${
-                        isFavorite ? "is-favorite" : ""
-                      }`}
-                      aria-label={
-                        isFavorite
-                          ? "Remove from favorites"
-                          : "Add to favorites"
-                      }
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFavorite(eventId);
-                      }}
-                    >
-                      {isFavorite ? "♥" : "♡"}
-                    </button>
-                  </div>
-
-                  <div className="event-details">
-                    <p className="event-date">{getEventDate(event)}</p>
-                    <h3>{event.title || event.name || "Untitled event"}</h3>
-                    <p className="event-location">
-                      <span>⌖</span> {getEventLocation(event)}
-                    </p>
-
-                    <div className="event-card-footer">
-                      <span className="event-price">
-                        {event.price === 0 ||
-                        event.is_free ||
-                        event.ticket_type === "free"
-                          ? "Free"
-                          : event.price
-                          ? `₹${event.price}`
-                          : "See details"}
-                      </span>
-                      <span className="event-arrow">↗</span>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <section className="organizer-banner">
-        <div>
-          <p className="section-kicker">GOT SOMETHING PLANNED?</p>
-          <h2>Your event deserves a crowd.</h2>
-          <p>
-            Create your event on VYBE and bring the right people together.
-          </p>
+          ) : (
+            <Link href="/auth" className="vybe-avatar" aria-label="Sign in">
+              ↗
+            </Link>
+          )}
         </div>
 
         <button
-          className="banner-button"
-          onClick={() => router.push("/organize")}
+          type="button"
+          className="vybe-icon-btn vybe-mobile-menu"
+          onClick={() => setMenuOpen((value) => !value)}
+          aria-label="Toggle menu"
         >
-          Create your event <span>↗</span>
+          ☰
         </button>
-      </section>
-
-      <footer className="footer">
-        <button className="footer-logo" onClick={() => router.push("/")}>
-          VYBE<span>.</span>
-        </button>
-        <p>Find your people. Find your VYBE.</p>
-        <span className="footer-copy">
-          © {new Date().getFullYear()} VYBE
-        </span>
-      </footer>
-
-      <style jsx>{`
-        .page {
-          min-height: 100vh;
-          background: #090914;
-          color: #f7f5ff;
-          font-family: Arial, Helvetica, sans-serif;
-          overflow: hidden;
-        }
-
-        .navbar {
-          min-height: 78px;
-          padding: 0 7%;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 20px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-          background: rgba(9, 9, 20, 0.96);
-        }
-
-        .logo,
-        .footer-logo {
-          border: 0;
-          background: transparent;
-          color: #fff;
-          font-size: 27px;
-          font-weight: 900;
-          letter-spacing: 3px;
-          cursor: pointer;
-        }
-
-        .logo span,
-        .footer-logo span {
-          color: #a98aff;
-        }
-
-        .nav-links,
-        .nav-actions {
-          display: flex;
-          align-items: center;
-          gap: 25px;
-        }
-
-        .nav-links a {
-          color: #c1bfd1;
-          text-decoration: none;
-          font-size: 14px;
-        }
-
-        .nav-links a:hover {
-          color: #fff;
-        }
-
-        .organize-button,
-        .logout-button,
-        .search-button,
-        .banner-button {
-          border: 0;
-          border-radius: 10px;
-          padding: 13px 17px;
-          font-weight: 700;
-          cursor: pointer;
-          transition: transform 0.2s, opacity 0.2s;
-        }
-
-        .organize-button,
-        .search-button {
-          color: white;
-          background: linear-gradient(110deg, #7856ed, #b45de9);
-        }
-
-        .logout-button {
-          color: #e5defc;
-          border: 1px solid #393149;
-          background: #151321;
-        }
-
-        .organize-button:hover,
-        .logout-button:hover,
-        .search-button:hover,
-        .banner-button:hover {
-          transform: translateY(-2px);
-        }
-
-        .hero {
-          position: relative;
-          min-height: 540px;
-          padding: 75px 7% 65px;
-          display: grid;
-          grid-template-columns: 1.1fr 0.9fr;
-          align-items: center;
-          gap: 30px;
-          background:
-            radial-gradient(
-              ellipse at 78% 48%,
-              rgba(107, 63, 185, 0.18),
-              transparent 43%
-            ),
-            #090914;
-        }
-
-        .hero-content {
-          position: relative;
-          z-index: 2;
-        }
-
-        .eyebrow {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          color: #c4a9ff;
-          font-size: 11px;
-          letter-spacing: 2px;
-          font-weight: 700;
-        }
-
-        .live-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #b08aff;
-          box-shadow: 0 0 14px #9b70ff;
-        }
-
-        .hero h1 {
-          margin: 24px 0 18px;
-          font-size: clamp(55px, 7.5vw, 94px);
-          line-height: 0.99;
-          letter-spacing: -5px;
-          font-weight: 900;
-        }
-
-        .hero h1 span {
-          color: #b28cff;
-          text-shadow: 0 0 38px rgba(153, 107, 255, 0.28);
-        }
-
-        .hero-description {
-          max-width: 430px;
-          color: #b7b4c9;
-          font-size: 16px;
-          line-height: 1.8;
-        }
-
-        .search-panel {
-          max-width: 680px;
-          margin-top: 28px;
-          padding: 9px;
-          display: flex;
-          gap: 8px;
-          border: 1px solid #30283f;
-          border-radius: 15px;
-          background: #12111e;
-        }
-
-        .search-field {
-          min-width: 0;
-          flex: 1;
-          display: flex;
-          align-items: center;
-          gap: 9px;
-          padding: 0 8px;
-          color: #a98aff;
-        }
-
-        .search-field span {
-          font-size: 23px;
-        }
-
-        .search-field input {
-          width: 100%;
-          min-width: 0;
-          padding: 12px 0;
-          color: white;
-          border: 0;
-          outline: 0;
-          background: transparent;
-          font-size: 13px;
-        }
-
-        .search-field input::placeholder {
-          color: #777387;
-        }
-
-        .search-button {
-          white-space: nowrap;
-          font-size: 12px;
-        }
-
-        .hero-note {
-          margin-top: 24px;
-          color: #8f8a9f;
-          font-size: 12px;
-        }
-
-        .hero-note span {
-          color: #b28cff;
-          margin-right: 7px;
-        }
-
-        .hero-art {
-          position: relative;
-          min-height: 355px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          isolation: isolate;
-        }
-
-        .art-glow {
-          position: absolute;
-          width: 260px;
-          height: 260px;
-          border-radius: 50%;
-          background: #6e3cb8;
-          filter: blur(100px);
-          opacity: 0.3;
-        }
-
-        .art-ring {
-          position: absolute;
-          width: 300px;
-          height: 300px;
-          border: 1px solid rgba(181, 141, 255, 0.25);
-          border-radius: 50%;
-          transform: rotate(-24deg) scaleY(0.7);
-        }
-
-        .ring-two {
-          width: 360px;
-          height: 360px;
-          transform: rotate(40deg) scaleY(0.72);
-          border-color: rgba(115, 91, 208, 0.3);
-        }
-
-        .art-center {
-          width: 175px;
-          height: 175px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          border-radius: 38px;
-          border: 1px solid rgba(213, 190, 255, 0.4);
-          background: linear-gradient(145deg, #39265b, #171126 70%);
-          box-shadow: 0 20px 70px rgba(118, 63, 198, 0.25);
-          transform: rotate(-7deg);
-        }
-
-        .art-center span {
-          font-size: 85px;
-          line-height: 0.9;
-          font-weight: 900;
-          color: #d1b9ff;
-        }
-
-        .art-center small {
-          margin-top: 10px;
-          color: #c3b2e8;
-          font-size: 8px;
-          letter-spacing: 2px;
-        }
-
-        .art-card {
-          position: absolute;
-          z-index: 2;
-          padding: 16px 18px;
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          border-radius: 12px;
-          background: rgba(23, 20, 38, 0.9);
-          box-shadow: 0 15px 45px rgba(0, 0, 0, 0.2);
-        }
-
-        .art-card span {
-          display: block;
-          margin-bottom: 7px;
-          color: #bda2ff;
-          font-size: 9px;
-          letter-spacing: 1.5px;
-        }
-
-        .art-card strong {
-          font-size: 14px;
-        }
-
-        .card-one {
-          top: 42px;
-          right: 0;
-          transform: rotate(5deg);
-        }
-
-        .card-two {
-          bottom: 35px;
-          left: 0;
-          transform: rotate(-5deg);
-        }
-
-        .category-section,
-        .events-section {
-          padding: 52px 7%;
-        }
-
-        .category-section {
-          border-top: 1px solid #211d2d;
-          border-bottom: 1px solid #211d2d;
-          background: #0d0c18;
-        }
-
-        .section-heading {
-          display: flex;
-          align-items: end;
-          justify-content: space-between;
-          gap: 20px;
-        }
-
-        .section-kicker {
-          margin: 0 0 10px;
-          color: #a98aff;
-          font-size: 10px;
-          letter-spacing: 2px;
-          font-weight: 800;
-        }
-
-        .section-heading h2,
-        .organizer-banner h2 {
-          margin: 0;
-          font-size: clamp(27px, 4vw, 39px);
-          letter-spacing: -1.3px;
-        }
-
-        .category-list {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          margin-top: 26px;
-        }
-
-        .category-chip {
-          padding: 11px 16px;
-          border: 1px solid #302b40;
-          border-radius: 999px;
-          background: #141220;
-          color: #c2bfd1;
-          cursor: pointer;
-          font-size: 12px;
-        }
-
-        .category-chip:hover,
-        .category-chip.selected {
-          border-color: #a98aff;
-          background: #2a2040;
-          color: #e5d7ff;
-        }
-
-        .events-section {
-          padding-top: 65px;
-          padding-bottom: 75px;
-        }
-
-        .section-subtitle {
-          color: #8f8a9f;
-          font-size: 13px;
-          margin-top: 12px;
-        }
-
-        .text-button {
-          border: 0;
-          background: transparent;
-          color: #c1a8ff;
-          cursor: pointer;
-          white-space: nowrap;
-        }
-
-        .event-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 22px;
-          margin-top: 32px;
-        }
-
-        .event-card {
-          min-width: 0;
-          overflow: hidden;
-          border: 1px solid #292437;
-          border-radius: 16px;
-          background: #11101c;
-          cursor: pointer;
-          transition: transform 0.2s, border-color 0.2s;
-        }
-
-        .event-card:hover {
-          transform: translateY(-5px);
-          border-color: #7252a8;
-        }
-
-        .event-image-wrap {
-          position: relative;
-          height: 220px;
-          overflow: hidden;
-          background: #211a32;
-        }
-
-        .event-image {
-          display: block;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          transition: transform 0.3s;
-        }
-
-        .event-card:hover .event-image {
-          transform: scale(1.04);
-        }
-
-        .event-category {
-          position: absolute;
-          left: 13px;
-          bottom: 13px;
-          padding: 7px 10px;
-          border-radius: 7px;
-          background: rgba(14, 11, 24, 0.86);
-          color: #e3d5ff;
-          font-size: 10px;
-        }
-
-        .favorite-button {
-          position: absolute;
-          top: 12px;
-          right: 12px;
-          width: 35px;
-          height: 35px;
-          border: 1px solid rgba(255, 255, 255, 0.18);
-          border-radius: 50%;
-          background: rgba(12, 10, 22, 0.8);
-          color: white;
-          font-size: 21px;
-          cursor: pointer;
-        }
-
-        .favorite-button.is-favorite {
-          color: #ff7ba8;
-        }
-
-        .event-details {
-          padding: 18px;
-        }
-
-        .event-date {
-          margin: 0 0 9px;
-          color: #b59aff;
-          font-size: 11px;
-          font-weight: 700;
-        }
-
-        .event-details h3 {
-          margin: 0;
-          color: #f5f1ff;
-          font-size: 19px;
-          line-height: 1.4;
-          overflow-wrap: anywhere;
-        }
-
-        .event-location {
-          margin: 12px 0 19px;
-          color: #9e99b0;
-          font-size: 12px;
-          line-height: 1.5;
-        }
-
-        .event-location span {
-          color: #b59aff;
-        }
-
-        .event-card-footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding-top: 14px;
-          border-top: 1px solid #292437;
-        }
-
-        .event-price {
-          color: #ded4f6;
-          font-size: 12px;
-          font-weight: 700;
-        }
-
-        .event-arrow {
-          color: #b59aff;
-          font-size: 20px;
-        }
-
-        .message-panel,
-        .empty-state {
-          min-height: 210px;
-          margin-top: 28px;
-          padding: 30px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          text-align: center;
-          border: 1px dashed #383047;
-          border-radius: 16px;
-          color: #aaa5bd;
-          background: #100f1b;
-        }
-
-        .empty-state h3 {
-          margin: 12px 0 0;
-          color: white;
-          font-size: 22px;
-        }
-
-        .empty-state p {
-          max-width: 420px;
-          font-size: 13px;
-          line-height: 1.7;
-        }
-
-        .empty-icon {
-          color: #b59aff;
-          font-size: 34px;
-        }
-
-        .spinner {
-          width: 28px;
-          height: 28px;
-          border: 3px solid #373047;
-          border-top-color: #b59aff;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-
-        .organizer-banner {
-          margin: 0 7% 65px;
-          padding: 36px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 25px;
-          border: 1px solid #493566;
-          border-radius: 18px;
-          background:
-            radial-gradient(
-              ellipse at 85% 10%,
-              rgba(154, 92, 228, 0.24),
-              transparent 50%
-            ),
-            #171224;
-        }
-
-        .organizer-banner > div > p:last-child {
-          color: #aaa4bd;
-          font-size: 13px;
-          line-height: 1.7;
-        }
-
-        .banner-button {
-          flex-shrink: 0;
-          color: white;
-          background: linear-gradient(110deg, #7856ed, #b45de9);
-        }
-
-        .banner-button span {
-          margin-left: 8px;
-        }
-
-        .footer {
-          min-height: 100px;
-          padding: 25px 7%;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 20px;
-          border-top: 1px solid #211d2d;
-          color: #89849b;
-          font-size: 12px;
-        }
-
-        .footer-logo {
-          font-size: 21px;
-        }
-
-        .footer-copy {
-          white-space: nowrap;
-        }
-
-        @media (max-width: 900px) {
-          .navbar {
-            padding: 16px 5%;
-            flex-wrap: wrap;
-          }
-
-          .nav-links {
-            display: none;
-          }
-
-          .hero {
-            padding: 55px 5%;
-            grid-template-columns: 1fr;
-          }
-
-          .hero-art {
-            min-height: 300px;
-          }
-
-          .category-section,
-          .events-section {
-            padding-left: 5%;
-            padding-right: 5%;
-          }
-
-          .event-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
-          .organizer-banner {
-            margin-left: 5%;
-            margin-right: 5%;
-          }
-        }
-
-        @media (max-width: 560px) {
-          .navbar {
-            gap: 12px;
-          }
-
-          .logo {
-            font-size: 23px;
-          }
-
-          .nav-actions {
-            gap: 8px;
-          }
-
-          .organize-button,
-          .logout-button {
-            padding: 10px 11px;
-            font-size: 11px;
-          }
-
-          .hero {
-            padding-top: 48px;
-          }
-
-          .hero h1 {
-            font-size: 62px;
-            letter-spacing: -3px;
-          }
-
-          .hero-description {
-            font-size: 14px;
-          }
-
-          .search-panel {
-            flex-direction: column;
-            padding: 12px;
-          }
-
-          .search-field {
-            min-height: 43px;
-            border-bottom: 1px solid #292437;
-          }
-
-          .search-button {
-            min-height: 44px;
-          }
-
-          .hero-art {
-            min-height: 270px;
-          }
-
-          .art-ring {
-            width: 230px;
-            height: 230px;
-          }
-
-          .ring-two {
-            width: 285px;
-            height: 285px;
-          }
-
-          .art-center {
-            width: 135px;
-            height: 135px;
-            border-radius: 27px;
-          }
-
-          .art-center span {
-            font-size: 65px;
-          }
-
-          .art-card {
-            padding: 12px;
-          }
-
-          .art-card strong {
-            font-size: 11px;
-          }
-
-          .card-one {
-            right: -3px;
-          }
-
-          .card-two {
-            left: -3px;
-          }
-
-          .category-section,
-          .events-section {
-            padding-top: 40px;
-            padding-bottom: 45px;
-          }
-
-          .section-heading h2,
-          .organizer-banner h2 {
-            font-size: 29px;
-          }
-
-          .events-heading {
-            align-items: start;
-          }
-
-          .text-button {
-            font-size: 11px;
-          }
-
-          .event-grid {
-            grid-template-columns: 1fr;
-            gap: 16px;
-          }
-
-          .event-image-wrap {
-            height: 220px;
-          }
-
-          .organizer-banner {
-            margin-bottom: 40px;
-            padding: 25px 20px;
-            flex-direction: column;
-            align-items: flex-start;
-          }
-
-          .banner-button {
-            width: 100%;
-          }
-
-          .footer {
-            flex-wrap: wrap;
-          }
-
-          .footer p {
-            order: 3;
-            width: 100%;
-          }
-        }
-      `}</style>
+        {menuOpen && (
+          <div
+            style={{
+              position: "absolute",
+              top: "60px",
+              right: "12px",
+              zIndex: 50,
+              display: "grid",
+              gap: "14px",
+              padding: "18px",
+              border: "1px solid #eee7f6",
+              borderRadius: "16px",
+              background: "white",
+              boxShadow: "0 15px 40px #24123a1c",
+            }}
+          >
+            <Link href="/" style={{ color: "#3a2d4e", textDecoration: "none" }}>Home</Link>
+            <Link href="/events" style={{ color: "#3a2d4e", textDecoration: "none" }}>Explore Events</Link>
+            <Link href="/organize" style={{ color: "#7938ed", textDecoration: "none" }}>Create Event</Link>
+            {session ? (
+              <button
+                type="button"
+                onClick={logOut}
+                style={{ border: 0, background: "transparent", textAlign: "left", color: "#3a2d4e" }}
+              >
+                Log out
+              </button>
+            ) : (
+              <Link href="/auth" style={{ color: "#3a2d4e", textDecoration: "none" }}>Sign in</Link>
+            )}
+          </div>
+        )}
+      </header>
+
+      <div className="vybe-wrap">
+        <section className="vybe-hero">
+          <div>
+            <div className="vybe-eyebrow">Discover · Attend · Create</div>
+            <h1>
+              Find Your Next
+              <span>Great Experience</span>
+            </h1>
+            <p className="vybe-hero-copy">
+              Explore the best events, parties, concerts, festivals, and more
+              happening around the world.
+            </p>
+
+            <form
+              className="vybe-search-card"
+              onSubmit={(e) => {
+                e.preventDefault();
+                document.getElementById("trending")?.scrollIntoView({
+                  behavior: "smooth",
+                });
+              }}
+            >
+              <label className="vybe-search-field">
+                <span>⌕</span>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search events, artists, or venues..."
+                  aria-label="Search events, artists, or venues"
+                />
+              </label>
+              <label className="vybe-search-field">
+                <span>⌖</span>
+                <input
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="City or location"
+                  aria-label="City or location"
+                />
+              </label>
+              <button className="vybe-gradient vybe-search-button" type="submit">
+                Search ↗
+              </button>
+            </form>
+
+            <div className="vybe-popular">
+              <strong>Popular:</strong>
+              {["All", "Music", "Nightlife", "Workshops"].map((item) => (
+                <button
+                  type="button"
+                  className="vybe-chip"
+                  key={item}
+                  onClick={() => setCategory(item)}
+                >
+                  {item === "All" ? "All Events" : item}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="vybe-chip"
+                onClick={() => setCategory("All")}
+              >
+                Free Events
+              </button>
+            </div>
+          </div>
+
+          <div className="vybe-art">
+            <div className="vybe-floating">
+              <strong>✦</strong>
+              Find your people
+            </div>
+            <div className="vybe-main-photo">
+              <img src={HERO_IMAGE} alt="Crowd enjoying a live music event" />
+              <div className="vybe-photo-caption">
+                Events Bring
+                <br />
+                People <span>Together.</span>
+              </div>
+            </div>
+            <div className="vybe-art-badges">
+              <div className="vybe-art-badge">
+                <img
+                  src="https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=120&q=80"
+                  alt=""
+                />
+                Music
+              </div>
+              <div className="vybe-art-badge">
+                <img
+                  src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=120&q=80"
+                  alt=""
+                />
+                Nightlife
+              </div>
+              <div className="vybe-art-badge">
+                <img
+                  src="https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&w=120&q=80"
+                  alt=""
+                />
+                Festivals
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="vybe-section" id="categories">
+          <div className="vybe-section-head">
+            <div>
+              <h2>Explore Categories</h2>
+              <p>Find the experience that matches your vibe.</p>
+            </div>
+            <button
+              type="button"
+              className="vybe-view-all"
+              onClick={() => setCategory("All")}
+              style={{ border: 0, background: "transparent", cursor: "pointer" }}
+            >
+              View all →
+            </button>
+          </div>
+
+          <div className="vybe-categories">
+            {CATEGORIES.map((item) => (
+              <button
+                key={item.name}
+                type="button"
+                onClick={() =>
+                  setCategory(item.name === "More" ? "All" : item.name)
+                }
+                className={`vybe-category ${
+                  category === item.name ? "active" : ""
+                }`}
+              >
+                <span className={`vybe-category-icon ${item.color}`}>
+                  {item.icon}
+                </span>
+                {item.name}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="vybe-section" id="trending">
+          <div className="vybe-section-head">
+            <div>
+              <h2>Trending Events</h2>
+              <p>
+                {loading
+                  ? "Loading published events..."
+                  : "Discover something unforgettable."}
+              </p>
+            </div>
+            <Link href="/events" className="vybe-view-all">
+              View all events →
+            </Link>
+          </div>
+
+          <div className="vybe-events">
+            {visibleEvents.length === 0 ? (
+              <div className="vybe-empty">
+                <div style={{ fontSize: 30, marginBottom: 8 }}>⌕</div>
+                <strong>No matching events found</strong>
+                <p>Try another search or choose a different category.</p>
+                <button
+                  type="button"
+                  className="vybe-gradient"
+                  style={{ padding: "11px 18px", marginTop: 8 }}
+                  onClick={() => {
+                    setSearch("");
+                    setCity("");
+                    setCategory("All");
+                  }}
+                >
+                  Clear filters
+                </button>
+              </div>
+            ) : (
+              visibleEvents.map((event, index) => (
+                <article
+                  key={event.id || event.slug || event.title}
+                  className="vybe-event"
+                  onClick={() => openEvent(event)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") openEvent(event);
+                  }}
+                  role="link"
+                  tabIndex={0}
+                >
+                  <div className="vybe-event-image">
+                    <img
+                      src={event.image}
+                      alt={event.title}
+                      loading={index > 1 ? "lazy" : "eager"}
+                    />
+                    <div className="vybe-event-date">
+                      {event.starts_at
+                        ? new Date(event.starts_at).toLocaleDateString(
+                            "en-US",
+                            { month: "short", day: "2-digit" }
+                          )
+                        : "VYBE"}
+                    </div>
+                    <button
+                      type="button"
+                      className={`vybe-heart ${
+                        favorites.includes(event.id || event.title) ? "active" : ""
+                      }`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const id = event.id || event.title;
+                        setFavorites((current) =>
+                          current.includes(id)
+                            ? current.filter((item) => item !== id)
+                            : [...current, id]
+                        );
+                      }}
+                      aria-label="Add to favorites"
+                    >
+                      {favorites.includes(event.id || event.title) ? "♥" : "♡"}
+                    </button>
+                  </div>
+                  <div className="vybe-event-body">
+                    <h3>{event.title}</h3>
+                    <div className="vybe-event-location">
+                      ⌖ {event.city || "Location to be announced"}
+                    </div>
+                    <div className="vybe-event-bottom">
+                      <span className="vybe-event-tag">{event.category}</span>
+                      <span className="vybe-price">{event.price}</span>
+                    </div>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="vybe-bottom-cta">
+          <div>
+            <h2>Have an event to share?</h2>
+            <p>Create your event and invite your people to the experience.</p>
+          </div>
+          <Link href="/organize" className="vybe-gradient vybe-create">
+            + Create Your Event
+          </Link>
+        </section>
+
+        <footer className="vybe-footer">
+          <strong style={{ color: "#7838ed", fontSize: 18 }}>VYBE.</strong>
+          <p>Discover events. Meet your people. Make every moment count.</p>
+        </footer>
+      </div>
     </main>
   );
 }
