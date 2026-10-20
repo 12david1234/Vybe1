@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabaseBrowser as supabase } from "@/lib/supabase";
+import { supabaseBrowser as supabase } from "../../lib/supabase";
 
 const BUCKET = "event-flyers";
 
