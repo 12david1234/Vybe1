@@ -2,9 +2,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser as supabase } from "../../lib/supabase";
 
 export default function AuthPage() {
+  const router = useRouter();
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,11 +20,10 @@ export default function AuthPage() {
 
     async function checkSession() {
       const { data, error } = await supabase.auth.getSession();
-
       if (!active) return;
 
       if (!error && data.session) {
-        window.location.replace("/");
+        router.replace("/");
         return;
       }
 
@@ -34,16 +35,14 @@ export default function AuthPage() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        window.location.replace("/");
-      }
+      if (session) router.replace("/");
     });
 
     return () => {
       active = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [router]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -64,7 +63,7 @@ export default function AuthPage() {
         if (error) throw error;
 
         if (data.session) {
-          window.location.replace("/");
+          router.replace("/");
           return;
         }
 
@@ -78,11 +77,11 @@ export default function AuthPage() {
         if (error) throw error;
 
         if (data.session) {
-          window.location.replace("/");
+          router.replace("/");
           return;
         }
 
-        setMessage("Login complete. Please try again.");
+        setMessage("Please verify your email and try again.");
       }
     } catch (err) {
       setError(err.message || "Login failed. Please try again.");
@@ -93,70 +92,107 @@ export default function AuthPage() {
 
   if (checking) {
     return (
-      <main style={styles.page}>
-        <p>Checking your session...</p>
+      <main className="grid min-h-screen place-items-center bg-white">
+        <p className="font-semibold text-violet-700">Loading VYBE...</p>
       </main>
     );
   }
 
   return (
-    <main style={styles.page}>
-      <section style={styles.card}>
-        <a href="/" style={styles.logo}>VYBE</a>
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-white via-violet-50 to-pink-100 px-4 py-10 text-slate-900">
+      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-violet-300/30 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-pink-300/30 blur-3xl" />
 
-        <h1 style={styles.heading}>
-          {mode === "login" ? "Welcome back" : "Create your account"}
-        </h1>
+      <section className="relative w-full max-w-md rounded-3xl border border-white bg-white/90 p-6 shadow-2xl shadow-violet-200/60 backdrop-blur sm:p-9">
+        <a
+          href="/auth"
+          className="inline-block bg-gradient-to-r from-violet-600 to-pink-500 bg-clip-text text-4xl font-black tracking-tight text-transparent"
+        >
+          VYBE
+        </a>
 
-        <p style={styles.subtitle}>
-          {mode === "login"
-            ? "Log in with your email and password."
-            : "Sign up with your email to get started."}
+        <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-violet-600">
+          Discover · Attend · Create
         </p>
 
-        <form onSubmit={handleSubmit}>
-          <label htmlFor="email" style={styles.label}>Email address</label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={styles.input}
-          />
+        <h1 className="mt-3 text-3xl font-black tracking-tight">
+          {mode === "login" ? "Welcome back" : "Join VYBE"}
+        </h1>
 
-          <label htmlFor="password" style={styles.label}>Password</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-            placeholder="At least 6 characters"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={6}
-            required
-            style={styles.input}
-          />
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          {mode === "login"
+            ? "Sign in to discover events and manage your experiences."
+            : "Create your account to discover and organize events."}
+        </p>
 
-          <button type="submit" disabled={loading} style={styles.button}>
+        <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+          <div>
+            <label htmlFor="email" className="text-sm font-semibold">
+              Email address
+            </label>
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="mt-2 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-base outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="password" className="text-sm font-semibold">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              autoComplete={
+                mode === "login" ? "current-password" : "new-password"
+              }
+              placeholder="At least 6 characters"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={6}
+              required
+              className="mt-2 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-base outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 px-4 py-3.5 font-bold text-white shadow-lg shadow-pink-200 transition hover:brightness-105 disabled:opacity-60"
+          >
             {loading
               ? "Please wait..."
               : mode === "login"
-                ? "Log In"
-                : "Create Account"}
+                ? "Log In →"
+                : "Create Account →"}
           </button>
         </form>
 
-        {message && <p style={styles.success}>{message}</p>}
-        {error && <p style={styles.error}>{error}</p>}
+        {message && (
+          <p className="mt-4 break-words rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">
+            {message}
+          </p>
+        )}
 
-        <p style={styles.switchText}>
-          {mode === "login" ? "Don't have an account?" : "Already registered?"}{" "}
+        {error && (
+          <p role="alert" className="mt-4 break-words rounded-xl bg-rose-50 p-3 text-sm text-rose-700">
+            {error}
+          </p>
+        )}
+
+        <p className="mt-6 text-center text-sm text-slate-500">
+          {mode === "login"
+            ? "Don't have an account?"
+            : "Already registered?"}{" "}
           <button
             type="button"
-            style={styles.switchButton}
+            className="font-bold text-violet-700 hover:text-pink-600"
             onClick={() => {
               setMode(mode === "login" ? "signup" : "login");
               setMessage("");
@@ -167,83 +203,10 @@ export default function AuthPage() {
           </button>
         </p>
 
-        <a href="/" style={styles.homeLink}>Back to VYBE</a>
+        <p className="mt-6 text-center text-xs text-slate-400">
+          Your events. Your people. Your VYBE.
+        </p>
       </section>
     </main>
   );
 }
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
-    boxSizing: "border-box",
-    background: "#080b16",
-    color: "#fff",
-    fontFamily: "Arial, sans-serif",
-  },
-  card: {
-    width: "100%",
-    maxWidth: 420,
-    padding: 28,
-    boxSizing: "border-box",
-    borderRadius: 20,
-    background: "#111827",
-    border: "1px solid #273449",
-  },
-  logo: {
-    color: "#a78bfa",
-    fontSize: 32,
-    fontWeight: "bold",
-    textDecoration: "none",
-  },
-  heading: { fontSize: 27, marginBottom: 8 },
-  subtitle: { color: "#aab4c8", lineHeight: 1.5, marginBottom: 24 },
-  label: { display: "block", marginBottom: 8, fontSize: 14 },
-  input: {
-    display: "block",
-    width: "100%",
-    boxSizing: "border-box",
-    padding: 14,
-    marginBottom: 18,
-    borderRadius: 10,
-    border: "1px solid #374151",
-    background: "#0b1220",
-    color: "#fff",
-    fontSize: 16,
-  },
-  button: {
-    width: "100%",
-    padding: 14,
-    border: "none",
-    borderRadius: 10,
-    background: "#7c3aed",
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-    cursor: "pointer",
-  },
-  success: { color: "#4ade80", overflowWrap: "anywhere", lineHeight: 1.5 },
-  error: { color: "#f87171", overflowWrap: "anywhere", lineHeight: 1.5 },
-  switchText: { color: "#aab4c8", textAlign: "center", marginTop: 24 },
-  switchButton: {
-    color: "#c4b5fd",
-    background: "none",
-    border: "none",
-    fontSize: 14,
-    fontWeight: "bold",
-    cursor: "pointer",
-  },
-  homeLink: {
-    display: "block",
-    marginTop: 18,
-    textAlign: "center",
-    color: "#aab4c8",
-    textDecoration: "none",
-    fontSize: 14,
-  },
-};
-
