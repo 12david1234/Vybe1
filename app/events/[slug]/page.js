@@ -2,166 +2,33 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabaseBrowser as supabase } from "../../../lib/supabase";
 
+function formatDate(value) {
+  if (!value) return "To be announced";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "To be announced";
+  return date.toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", year:"numeric", hour:"numeric", minute:"2-digit" });
+}
+
 export default function EventPage() {
-  const params = useParams();
-  const slug = params?.slug;
-  const router = useRouter();
-
-  const [event, setEvent] = useState(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!slug) return;
-
-    async function loadEvent() {
-      try {
-        const { data, error } = await supabase
-          .from("events")
-          .select("*")
-          .eq("slug", slug)
-          .maybeSingle();
-
-        if (error) throw error;
-
-        if (!data) {
-          setError("Event not found.");
-        } else {
-          setEvent(data);
-        }
-      } catch (err) {
-        setError(err?.message || "Could not load event.");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadEvent();
-  }, [slug]);
-
-  async function copyEventLink() {
-    const link = window.location.href;
-
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-    } catch {
-      window.prompt("Copy your event link:", link);
-    }
-  }
-
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-black p-6 text-white">
-        Loading event...
-      </main>
-    );
-  }
-
-  if (error || !event) {
-    return (
-      <main className="min-h-screen bg-black p-6 text-white">
-        <h1 className="text-2xl font-bold">Event unavailable</h1>
-        <p className="mt-3 break-words text-gray-300">
-          {error || "Event not found."}
-        </p>
-        <button
-          onClick={() => router.push("/")}
-          className="mt-6 rounded-xl bg-blue-600 px-5 py-3 font-semibold"
-        >
-          Back to home
-        </button>
-      </main>
-    );
-  }
-
-  return (
-    <main className="min-h-screen bg-black px-4 py-6 text-white">
-      <article className="mx-auto max-w-lg">
-        {event.image_url && (
-          <img
-            src={event.image_url}
-            alt={event.title || "Event flyer"}
-            className="mb-5 max-h-64 w-full rounded-2xl object-contain"
-          />
-        )}
-
-        <p className="text-sm text-blue-400">
-          {event.category || "Event"}
-        </p>
-
-        <h1 className="mt-2 text-3xl font-bold">
-          {event.title}
-        </h1>
-
-        <p className="mt-4 whitespace-pre-wrap text-gray-300">
-          {event.description}
-        </p>
-
-        <div className="mt-6 space-y-3 rounded-2xl border border-gray-800 p-4">
-          <p>
-            <strong>Venue:</strong>{" "}
-            {event.venue || event.location_address || "Not specified"}
-          </p>
-
-          <p>
-            <strong>Location:</strong>{" "}
-            {[event.city, event.country].filter(Boolean).join(", ") ||
-              event.location_address ||
-              "Not specified"}
-          </p>
-
-          <p>
-            <strong>Starts:</strong>{" "}
-            {event.starts_at
-              ? new Date(event.starts_at).toLocaleString()
-              : event.start_at
-                ? new Date(event.start_at).toLocaleString()
-                : "Not specified"}
-          </p>
-
-          <p>
-            <strong>Ends:</strong>{" "}
-            {event.ends_at
-              ? new Date(event.ends_at).toLocaleString()
-              : "Not specified"}
-          </p>
-
-          <p>
-            <strong>Registration:</strong>{" "}
-            {event.ticket_mode === "sell"
-              ? `Paid ticket · ₹${event.price}`
-              : "Free RSVP"}
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={copyEventLink}
-          className="mt-6 w-full rounded-xl bg-blue-600 px-5 py-4 font-semibold"
-        >
-          {copied ? "Link copied!" : "Copy event link"}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => router.push("/organize")}
-          className="mt-3 w-full rounded-xl border border-gray-700 px-5 py-4 font-semibold"
-        >
-          Create another event
-        </button>
-
-        <button
-          type="button"
-          onClick={() => router.push("/discover")}
-          className="mt-3 w-full rounded-xl border border-gray-700 px-5 py-4"
-        >
-          Discover events
-        </button>
-      </article>
-    </main>
-  );
+  const params=useParams(), slug=params?.slug, router=useRouter();
+  const [event,setEvent]=useState(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[copied,setCopied]=useState(false);
+  useEffect(()=>{if(!slug)return;let active=true;async function load(){try{const {data,error}=await supabase.from("events").select("*").eq("slug",slug).maybeSingle();if(error)throw error;if(!active)return;if(!data)setError("Event not found.");else setEvent(data);}catch(err){if(active)setError(err?.message||"Could not load event.");}finally{if(active)setLoading(false);}}load();return()=>{active=false};},[slug]);
+  async function copyEventLink(){const link=window.location.href;try{await navigator.clipboard.writeText(link);setCopied(true);window.setTimeout(()=>setCopied(false),2200);}catch{window.prompt("Copy your event link:",link);}}
+  if(loading)return <main className="grid min-h-screen place-items-center bg-gradient-to-br from-violet-50 via-white to-pink-50 text-slate-700"><p className="font-bold">Loading event...</p></main>;
+  if(error||!event)return <main className="min-h-screen bg-gradient-to-br from-violet-50 via-white to-pink-50 p-5 text-slate-900"><header className="mx-auto flex max-w-6xl justify-between"><Link href="/" className="text-3xl font-black text-violet-700">VYBE<span className="text-pink-500">.</span></Link><Link href="/events" className="font-bold text-violet-700">Explore Events</Link></header><section className="mx-auto mt-16 max-w-lg rounded-3xl border border-violet-100 bg-white p-8 text-center shadow-sm"><h1 className="text-2xl font-black">Event unavailable</h1><p className="mt-3 break-words text-sm text-slate-500">{error||"Event not found."}</p><button onClick={()=>router.push("/")} className="mt-6 w-full rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 px-5 py-3.5 font-bold text-white">Back to home</button></section></main>;
+  const paid=event.ticket_mode==="sell", start=event.starts_at||event.start_at, location=[event.city,event.country].filter(Boolean).join(", ")||event.location_address||"Location to be announced";
+  return <main className="min-h-screen overflow-x-hidden bg-gradient-to-br from-violet-50 via-white to-pink-50 text-slate-900">
+   <style jsx global>{`*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif}`}</style>
+   <header className="sticky top-0 z-30 border-b border-violet-100 bg-white/95 backdrop-blur-xl"><div className="mx-auto flex min-h-[68px] max-w-7xl items-center gap-4 px-4 sm:px-6"><Link href="/" className="text-2xl font-black text-violet-700 sm:text-3xl">VYBE<span className="text-pink-500">.</span></Link><nav className="ml-4 hidden gap-6 text-sm font-bold text-slate-600 md:flex"><Link href="/">Home</Link><Link href="/events" className="text-violet-700">Explore Events</Link><Link href="/organize">Create Event</Link></nav><div className="flex-1"/><button onClick={copyEventLink} className="rounded-xl border border-violet-200 px-3 py-2.5 text-xs font-bold text-violet-700 sm:text-sm">{copied?"✓ Copied":"↗ Share Event"}</button><Link href="/organize" className="hidden rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 px-4 py-2.5 text-sm font-bold text-white sm:block">+ Create Event</Link></div></header>
+   <div className="mx-auto max-w-7xl px-4 pb-12 pt-5 sm:px-6 sm:pt-8"><div className="mb-5 flex flex-wrap gap-2 text-xs font-semibold text-slate-500 sm:text-sm"><Link href="/">Home</Link><span>/</span><Link href="/events">Explore Events</Link><span>/</span><span className="max-w-[200px] truncate text-violet-700">{event.title}</span></div>
+    <section className="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,.8fr)] lg:gap-8"><div className="min-w-0"><div className="overflow-hidden rounded-3xl border border-violet-100 bg-white p-2 shadow-sm sm:p-3">{event.image_url?<img src={event.image_url} alt={event.title||"Event flyer"} className="max-h-[560px] min-h-[220px] w-full rounded-2xl bg-violet-50 object-contain sm:min-h-[320px]"/>:<div className="grid min-h-[260px] place-items-center rounded-2xl bg-gradient-to-br from-violet-200 via-fuchsia-100 to-pink-200 text-5xl text-violet-700">✦</div>}</div>
+     <article className="mt-5 rounded-2xl border border-violet-100 bg-white p-5 shadow-sm sm:p-7"><span className="inline-flex rounded-full bg-violet-50 px-3 py-1.5 text-xs font-extrabold text-violet-700">{event.category||"Event"}</span><h1 className="mt-4 break-words text-3xl font-black leading-tight tracking-tight sm:text-4xl lg:text-5xl">{event.title}</h1><p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600 sm:text-base">{event.description||"More event information will be announced soon."}</p></article>
+    </div><aside className="min-w-0 space-y-4 lg:sticky lg:top-24"><section className="rounded-2xl border border-violet-100 bg-white p-5 shadow-sm sm:p-6"><p className="text-xs font-extrabold uppercase tracking-widest text-violet-600">Event Information</p><div className="mt-5 flex gap-3"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-violet-50 text-xl text-violet-700">▦</div><div className="min-w-0"><p className="text-xs text-slate-500">Date and time</p><p className="mt-1 break-words text-sm font-extrabold leading-6">{formatDate(start)}</p>{event.ends_at&&<p className="mt-1 text-xs text-slate-500">Ends {formatDate(event.ends_at)}</p>}</div></div><div className="my-5 border-t border-slate-100"/><div className="flex gap-3"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-pink-50 text-xl text-pink-600">⌖</div><div className="min-w-0"><p className="text-xs text-slate-500">Location</p><p className="mt-1 break-words text-sm font-extrabold leading-6">{event.venue||location}</p>{event.venue&&<p className="mt-1 break-words text-xs text-slate-500">{location}</p>}</div></div><div className="my-5 border-t border-slate-100"/><div className="flex gap-3"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-fuchsia-50 text-xl text-fuchsia-700">♧</div><div><p className="text-xs text-slate-500">Admission</p><p className="mt-1 text-sm font-extrabold">{paid?`₹${event.price??0} onwards`:"Free RSVP"}</p><p className="mt-1 text-xs text-slate-500">{paid?"Ticket price set by the organizer.":"Free event registration."}</p></div></div></section>
+     <section className="rounded-2xl border border-violet-100 bg-white p-5 shadow-sm sm:p-6"><div className="rounded-2xl bg-gradient-to-r from-violet-50 to-pink-50 p-4"><p className="text-xs font-bold text-violet-700">YOUR NEXT EXPERIENCE</p><p className="mt-2 text-xl font-black">{paid?"Explore ticket details":"Want to join this event?"}</p><p className="mt-2 text-sm leading-6 text-slate-600">Share this event with friends or keep its link handy.</p></div><button onClick={copyEventLink} className="mt-4 w-full rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 px-5 py-4 text-sm font-extrabold text-white shadow-lg shadow-violet-200">{copied?"✓ Event link copied":"↗ Copy event link"}</button><button onClick={()=>router.push("/events")} className="mt-3 w-full rounded-xl border border-violet-200 px-5 py-3.5 text-sm font-bold text-violet-700 hover:bg-violet-50">Explore more events</button><p className="mt-4 text-center text-xs leading-5 text-slate-400">Ticket purchase and RSVP submission require a connected registration flow.</p></section><section className="rounded-2xl border border-violet-100 bg-white p-5 shadow-sm"><p className="text-sm font-extrabold">Hosting your own event?</p><p className="mt-1 text-xs leading-5 text-slate-500">Create an event and share it with your community on VYBE.</p><button onClick={()=>router.push("/organize")} className="mt-4 w-full rounded-xl bg-violet-50 px-4 py-3 text-sm font-bold text-violet-700">+ Create another event</button></section></aside></section>
+    <footer className="mt-10 border-t border-violet-100 py-6"><Link href="/" className="text-xl font-black text-violet-700">VYBE<span className="text-pink-500">.</span></Link><p className="mt-2 text-xs text-slate-500">Discover events. Meet your people. Make every moment count.</p></footer>
+   </div>
+  </main>;
 }
