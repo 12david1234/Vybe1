@@ -289,7 +289,46 @@ export default function OrganizePage() {
     setNotice("");
 
     const isDraft = status === "draft";
+const airlineBlockedTerms = [
+  "airline",
+  "aviation",
+  "flight booking",
+  "flight ticket",
+  "air ticket",
+  "airways",
+  "indigo",
+  "air india",
+  "spicejet",
+  "akasa air",
+  "vistara",
+  "air india express",
+  "alliance air",
+  "fly91",
+  "star air"
+];
 
+const eventText = [
+  title,
+  description,
+  category,
+  venue,
+  address,
+  organizationName,
+  organization?.name
+]
+  .filter(Boolean)
+  .join(" ")
+  .toLowerCase();
+
+const isAirlineEvent = airlineBlockedTerms.some((term) =>
+  eventText.includes(term)
+);
+
+if (isAirlineEvent) {
+  setError("Airline and aviation-related events are not allowed on VYBE.");
+  setSection("details");
+  return;
+}
     if (!title.trim()) {
       setError("Enter an event title.");
       setSection("details");
