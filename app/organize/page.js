@@ -6,104 +6,879 @@ import Link from "next/link";
 import { supabaseBrowser as supabase } from "../../lib/supabase";
 
 const BUCKET = "event-flyers";
-const CATEGORIES = ["Music","Nightlife","Sports","Business","Education","Food & Drink","Arts & Culture","Community","Other"];
-const DEFAULT_FLYERS = [
- {name:"Party",category:"Nightlife",image:"https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=900&q=85"},
- {name:"Music",category:"Music",image:"https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=85"},
- {name:"Sports",category:"Sports",image:"https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=900&q=85"},
+const CATEGORIES = [
+  "Music", "Nightlife", "Sports", "Business", "Education",
+  "Food & Drink", "Arts & Culture", "Community", "Other"
 ];
-const inputClass="mt-2 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100";
-const cardClass="min-w-0 rounded-2xl border border-violet-100 bg-white p-4 shadow-sm sm:p-6";
+
+const DEFAULT_FLYERS = [
+  {
+    name: "Party",
+    category: "Nightlife",
+    image: "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=900&q=85"
+  },
+  {
+    name: "Music",
+    category: "Music",
+    image: "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=85"
+  },
+  {
+    name: "Sports",
+    category: "Sports",
+    image: "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=900&q=85"
+  }
+];
+
+const inputClass =
+  "mt-2 block w-full min-w-0 max-w-full box-border rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100";
+
+const cardClass =
+  "min-w-0 rounded-2xl border border-violet-100 bg-white p-4 shadow-sm sm:p-6";
+
+function formatDate(value) {
+  if (!value) return "Date and time not set";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "Date and time not set";
+
+  return d.toLocaleString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
 
 export default function OrganizePage() {
- const router=useRouter(), fileInput=useRef(null), objectUrlRef=useRef("");
- const [flyer,setFlyer]=useState(null),[preview,setPreview]=useState(""),[template,setTemplate]=useState(""),[flyers,setFlyers]=useState(DEFAULT_FLYERS),[galleryOpen,setGalleryOpen]=useState(false),[flyerSearch,setFlyerSearch]=useState(""),[flyerCategory,setFlyerCategory]=useState("All");
- const [title,setTitle]=useState(""),[description,setDescription]=useState(""),[category,setCategory]=useState("Music"),[startsAt,setStartsAt]=useState(""),[endsAt,setEndsAt]=useState("");
- const [address,setAddress]=useState(""),[places,setPlaces]=useState([]),[selectedPlace,setSelectedPlace]=useState(null),[venue,setVenue]=useState("");
- const [ticketMode,setTicketMode]=useState("rsvp"),[ticketName,setTicketName]=useState("General Admission"),[price,setPrice]=useState("0"),[quantity,setQuantity]=useState("100");
- const [organizationName,setOrganizationName]=useState(""),[organization,setOrganization]=useState(null),[loading,setLoading]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState(""),[section,setSection]=useState("details"),[recurring,setRecurring]=useState(false),[limitRsvp,setLimitRsvp]=useState(false),[rsvpLimit,setRsvpLimit]=useState("100");
+  const router = useRouter();
+  const fileInput = useRef(null);
+  const objectUrlRef = useRef("");
 
- useEffect(()=>{let active=true;async function loadTemplates(){const all=[...DEFAULT_FLYERS];let offset=0;try{while(true){const {data,error}=await supabase.storage.from(BUCKET).list("templates",{limit:100,offset,sortBy:{column:"name",order:"asc"}});if(error||!data?.length)break;for(const item of data){if(!item.name||item.name.startsWith("."))continue;const ext=item.name.split(".").pop()?.toLowerCase();if(!["jpg","jpeg","png","webp","avif"].includes(ext))continue;const {data:publicData}=supabase.storage.from(BUCKET).getPublicUrl(`templates/${item.name}`);if(publicData?.publicUrl)all.push({name:item.name.replace(/\.[^.]+$/,"").replace(/[-_]+/g," "),category:"Other",image:publicData.publicUrl});}if(data.length<100)break;offset+=100;}}catch{}if(active)setFlyers(all);}loadTemplates();return()=>{active=false};},[]);
- useEffect(()=>{let active=true;async function loadOrg(){try{const {data:sd}=await supabase.auth.getSession();const user=sd?.session?.user;if(!user){router.replace("/auth");return;}const {data}=await supabase.from("organizations").select("id,name,slug").eq("owner_id",user.id).limit(1).maybeSingle();if(active&&data){setOrganization(data);setOrganizationName(data.name);}}catch{}}loadOrg();return()=>{active=false};},[router]);
- useEffect(()=>{if(address.trim().length<3||selectedPlace){setPlaces([]);return;}const controller=new AbortController();const timer=setTimeout(async()=>{try{const response=await fetch("https://photon.komoot.io/api/?limit=6&q="+encodeURIComponent(address),{signal:controller.signal});if(response.ok){const data=await response.json();setPlaces(data.features||[]);}}catch(err){if(err.name!=="AbortError")setPlaces([]);}},450);return()=>{clearTimeout(timer);controller.abort()};},[address,selectedPlace]);
- useEffect(()=>()=>{if(objectUrlRef.current)URL.revokeObjectURL(objectUrlRef.current)},[]);
- function setLocalPreview(file){if(objectUrlRef.current)URL.revokeObjectURL(objectUrlRef.current);objectUrlRef.current=file?URL.createObjectURL(file):"";setPreview(objectUrlRef.current);}
- function selectTemplate(item){if(objectUrlRef.current)URL.revokeObjectURL(objectUrlRef.current);objectUrlRef.current="";setTemplate(item.name);setCategory(item.category==="Other"?category:item.category);setFlyer(null);setPreview(item.image);setGalleryOpen(false);setError("");if(fileInput.current)fileInput.current.value="";}
- function handleFlyer(e){const file=e.target.files?.[0];if(!file)return;if(!file.type.startsWith("image/")){setError("Please choose an image file.");e.target.value="";return;}if(file.size>5*1024*1024){setError("Image must be smaller than 5 MB.");e.target.value="";return;}setFlyer(file);setTemplate("");setLocalPreview(file);setError("");}
- function removeFlyer(){setFlyer(null);setTemplate("");setLocalPreview(null);if(fileInput.current)fileInput.current.value="";}
- function choosePlace(place){const p=place.properties||{},coords=place.geometry?.coordinates||[];const city=p.city||p.town||p.village||p.county||"";const label=[p.name,p.street,p.housenumber,city,p.state,p.country].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(", ");setSelectedPlace({label,city,country:p.country||"",latitude:coords[1]??null,longitude:coords[0]??null});setAddress(label);setPlaces([]);}
- async function saveEvent(e,status="published"){
-  e?.preventDefault?.();setError("");setNotice("");const isDraft=status==="draft";
-  if(!title.trim()){setError("Enter an event title.");setSection("details");return;}
-  if(!isDraft&&!description.trim()){setError("Enter an event description.");setSection("details");return;}
-  if(!isDraft&&!preview){setError("Choose a flyer or upload a photo.");setSection("flyer");return;}
-  if(!isDraft&&!selectedPlace){setError("Search for a location and select a suggestion.");setSection("location");return;}
-  if(!isDraft&&(!startsAt||new Date(startsAt)<=new Date())){setError("Choose a future start date and time.");setSection("details");return;}
-  if(endsAt&&startsAt&&new Date(endsAt)<=new Date(startsAt)){setError("End time must be after start time.");setSection("details");return;}
-  if(!isDraft&&ticketMode==="sell"&&(!ticketName.trim()||!Number.isFinite(Number(price))||Number(price)<0||!Number.isInteger(Number(quantity))||Number(quantity)<1)){setError("Check ticket name, price, and quantity.");setSection("tickets");return;}
-  setLoading(true);
-  try{
-   const {data:sd,error:se}=await supabase.auth.getSession();if(se)throw se;const user=sd?.session?.user;if(!user){router.replace("/auth");return;}
-   let org=organization;if(!org){const name=organizationName.trim();if(!name){setSection("additional");throw new Error("Enter your organization name.");}const slugBase=name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"organization";const {data,error}=await supabase.from("organizations").insert({owner_id:user.id,name,slug:slugBase+"-"+Date.now().toString(36)}).select("id,name,slug").single();if(error)throw new Error("Organization: "+error.message);org=data;setOrganization(data);}
-   let imageUrl=preview||null;if(flyer){const safeName=flyer.name.replace(/[^a-zA-Z0-9._-]/g,"-");const path=`${user.id}/${Date.now()}-${safeName}`;const {error}=await supabase.storage.from(BUCKET).upload(path,flyer,{cacheControl:"3600",upsert:false,contentType:flyer.type});if(error)throw new Error("Flyer upload: "+error.message);imageUrl=supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;}
-   const base=title.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,55)||"event";const slug=base+"-"+Date.now().toString(36);
-   const {data:savedEvent,error:saveError}=await supabase.from("events").insert({title:title.trim(),description:description.trim()||"",venue:venue.trim()||selectedPlace?.label||null,city:selectedPlace?.city||null,country:selectedPlace?.country||null,location_address:selectedPlace?.label||null,latitude:selectedPlace?.latitude??null,longitude:selectedPlace?.longitude??null,category,starts_at:startsAt?new Date(startsAt).toISOString():null,ends_at:endsAt?new Date(endsAt).toISOString():null,ticket_mode:ticketMode,price:ticketMode==="sell"?Number(price):0,currency:"INR",image_url:imageUrl,slug,status,organizer_id:user.id,organization_id:org.id}).select("id").single();
-   if(saveError)throw new Error("Event save: "+saveError.message);
-   if(!isDraft&&ticketMode==="sell"){const {error}=await supabase.from("event_ticket_types").insert({event_id:savedEvent.id,name:ticketName.trim(),price:Number(price),quantity:Number(quantity),currency:"INR"});if(error){await supabase.from("events").update({status:"draft"}).eq("id",savedEvent.id).eq("organizer_id",user.id);throw new Error("Ticket setup failed; event returned to draft if permitted: "+error.message);}}
-   if(isDraft)setNotice("Draft saved successfully.");else router.push("/events/"+slug);
-  }catch(err){setError(err?.message||"Could not save the event.");}finally{setLoading(false);}
- }
- const visibleFlyers=flyers.filter((f)=>f.name.toLowerCase().includes(flyerSearch.trim().toLowerCase())).filter((f)=>flyerCategory==="All"||f.category===flyerCategory);
- const sections=[{id:"details",label:"Event Details",icon:"▣"},{id:"location",label:"Location",icon:"⌖"},{id:"tickets",label:"Tickets & RSVP",icon:"♧"},{id:"flyer",label:"Flyer",icon:"▧"},{id:"additional",label:"Additional Info",icon:"◎"}];
- const heading={details:"Event Details",location:"Event Location",tickets:"Tickets & RSVP",flyer:"Flyer / Event Image",additional:"Additional Information"};
+  const [flyer, setFlyer] = useState(null);
+  const [preview, setPreview] = useState("");
+  const [template, setTemplate] = useState("");
+  const [flyers, setFlyers] = useState(DEFAULT_FLYERS);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [flyerSearch, setFlyerSearch] = useState("");
+  const [flyerCategory, setFlyerCategory] = useState("All");
 
- return <main className="min-h-screen overflow-x-hidden bg-gradient-to-br from-violet-50 via-white to-pink-50 text-slate-900">
-  <style jsx global>{`*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif}.formlabel{font-size:12px;font-weight:800;color:#302641}.section-card{border:1px solid #eee5f8;border-radius:17px;background:white;padding:16px;box-shadow:0 5px 18px #45206a08}@media(min-width:640px){.section-card{padding:22px}}`}</style>
-  <header className="sticky top-0 z-30 border-b border-violet-100 bg-white/95 backdrop-blur-xl"><div className="mx-auto flex max-w-7xl items-center gap-3 px-3 py-3 sm:px-6">
-   <button onClick={()=>router.push("/")} className="shrink-0 text-2xl font-black tracking-tight text-violet-700">VYBE<span className="text-pink-500">.</span></button>
-   <div className="ml-2 hidden max-w-xs flex-1 rounded-full border border-violet-100 bg-violet-50/50 px-3 py-2 text-xs text-slate-500 sm:block">⌕ Search events, locations...</div>
-   <nav className="ml-2 hidden items-center gap-5 text-xs font-bold text-slate-600 md:flex"><Link href="/">Home</Link><Link href="/events">Explore Events</Link></nav>
-   <div className="flex-1"/><button onClick={()=>router.push("/my-events")} className="rounded-xl px-2 py-2 text-xs font-bold text-slate-600 hover:bg-violet-50 sm:px-3">My Events</button>
-   <button onClick={()=>saveEvent(null,"draft")} disabled={loading} className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-xs font-bold text-violet-700 sm:px-4">Save Draft</button>
-   <button onClick={()=>document.getElementById("publish-event")?.click()} disabled={loading} className="rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 px-3 py-2.5 text-xs font-bold text-white sm:px-4">Publish Event</button>
-  </div></header>
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("Music");
+  const [startsAt, setStartsAt] = useState("");
+  const [endsAt, setEndsAt] = useState("");
 
-  <div className="mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-7">
-   <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-3xl font-black tracking-tight sm:text-4xl">Create <span className="bg-gradient-to-r from-violet-700 to-pink-500 bg-clip-text text-transparent">Event</span></h1><p className="mt-1 text-sm text-slate-500">Fill in the details below to create and publish your event.</p></div><div className="hidden gap-2 sm:flex"><button onClick={()=>saveEvent(null,"draft")} className="rounded-xl border border-violet-200 bg-white px-4 py-3 text-sm font-bold text-violet-700">Save Draft</button><button onClick={()=>document.getElementById("publish-event")?.click()} className="rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 px-5 py-3 text-sm font-bold text-white">Publish Event</button></div></div>
-   <nav className="mb-5 grid grid-cols-5 gap-1 rounded-2xl border border-violet-100 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2">{sections.map((s)=><button key={s.id} type="button" onClick={()=>setSection(s.id)} className={`min-w-0 rounded-xl px-1 py-3 text-center transition sm:px-2 ${section===s.id?"bg-gradient-to-r from-violet-600 to-pink-500 text-white shadow-md":"text-slate-500 hover:bg-violet-50 hover:text-violet-700"}`}><span className="block text-base sm:text-lg">{s.icon}</span><span className="mt-1 block truncate text-[9px] font-bold sm:text-xs">{s.label}</span></button>)}</nav>
-   <form onSubmit={(e)=>saveEvent(e,"published")} className="min-w-0 space-y-4">
-    {section==="details"&&<section className="section-card"><div className="mb-5 flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-violet-50 text-xl text-violet-700">▣</span><div><h2 className="font-extrabold">{heading.details}</h2><p className="text-xs text-slate-500">Basic information about your event.</p></div></div>
-     <div className="grid gap-4 md:grid-cols-[1.3fr_.7fr]"><label className="formlabel">Event Title *<input required maxLength={160} value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Neon Nights Music Festival" className={inputClass}/></label><label className="formlabel">Category<select value={category} onChange={e=>setCategory(e.target.value)} className={inputClass}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></label></div>
-     <label className="formlabel mt-4 block">Description *<textarea rows={4} value={description} onChange={e=>setDescription(e.target.value)} placeholder="Tell people what makes your event special..." className={`${inputClass} resize-y`}/></label>
-     <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="formlabel">Start date and time<input type="datetime-local" value={startsAt} onChange={e=>setStartsAt(e.target.value)} className={inputClass}/></label><label className="formlabel">End date and time<input type="datetime-local" min={startsAt||undefined} value={endsAt} onChange={e=>setEndsAt(e.target.value)} className={inputClass}/></label></div>
-     <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="flex items-center gap-3 rounded-xl bg-violet-50 p-3 text-sm"><input type="checkbox" checked={recurring} onChange={e=>setRecurring(e.target.checked)} className="accent-violet-600"/><span><b className="block">Recurring event</b><small className="text-slate-500">Visual setting; recurrence is not stored in the current schema.</small></span></label><div className="rounded-xl bg-pink-50 p-3 text-xs leading-5 text-slate-600">Required fields are checked when you publish.</div></div>
-     <button type="button" onClick={()=>setSection("location")} className="mt-5 w-full rounded-xl bg-violet-50 px-4 py-3 font-bold text-violet-700">Continue to Location →</button></section>}
+  const [address, setAddress] = useState("");
+  const [places, setPlaces] = useState([]);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [venue, setVenue] = useState("");
 
-    {section==="location"&&<section className="section-card"><div className="mb-5 flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-violet-50 text-xl text-violet-700">⌖</span><div><h2 className="font-extrabold">{heading.location}</h2><p className="text-xs text-slate-500">Search for a location anywhere in the world.</p></div></div>
-     <label className="formlabel block">Search city, address or venue *<input value={address} onChange={e=>{setAddress(e.target.value);setSelectedPlace(null)}} placeholder="Search city, address or venue..." autoComplete="off" className={inputClass}/></label>
-     {places.length>0&&<div className="mt-2 max-h-60 overflow-y-auto rounded-xl border border-violet-100 bg-white shadow-lg">{places.map((p,i)=><button key={p.properties?.osm_id||i} type="button" onClick={()=>choosePlace(p)} className="block w-full border-b border-slate-100 p-3 text-left last:border-0 hover:bg-violet-50"><b className="block text-sm">{p.properties?.name||p.properties?.street||"Location"}</b><span className="mt-1 block text-xs text-slate-500">{[p.properties?.city||p.properties?.town||p.properties?.village,p.properties?.state,p.properties?.country].filter(Boolean).join(", ")}</span></button>)}</div>}
-     {selectedPlace&&<div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"><b>✓ Location selected</b><p className="mt-1 break-words">{selectedPlace.label}</p><button type="button" onClick={()=>{setSelectedPlace(null);setAddress("")}} className="mt-2 text-xs underline">Change location</button></div>}
-     <label className="formlabel mt-4 block">Venue Name<input value={venue} onChange={e=>setVenue(e.target.value)} placeholder="e.g. Club, Stadium, Cafe" className={inputClass}/></label>
-     <button type="button" onClick={()=>setSection("tickets")} className="mt-5 w-full rounded-xl bg-violet-50 px-4 py-3 font-bold text-violet-700">Continue to Tickets →</button></section>}
+  const [ticketMode, setTicketMode] = useState("rsvp");
+  const [ticketName, setTicketName] = useState("General Admission");
+  const [price, setPrice] = useState("0");
+  const [quantity, setQuantity] = useState("100");
 
-    {section==="tickets"&&<section className="section-card"><div className="mb-5 flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-pink-50 text-xl text-pink-600">♧</span><div><h2 className="font-extrabold">{heading.tickets}</h2><p className="text-xs text-slate-500">Choose how people can join your event.</p></div></div>
-     <div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={()=>setTicketMode("rsvp")} className={`rounded-xl border p-4 text-left ${ticketMode==="rsvp"?"border-pink-400 bg-pink-50 ring-2 ring-pink-100":"border-slate-200"}`}><b className="block">▣ Free RSVP</b><span className="mt-1 block text-xs text-slate-500">Let people RSVP for free.</span></button><button type="button" onClick={()=>setTicketMode("sell")} className={`rounded-xl border p-4 text-left ${ticketMode==="sell"?"border-violet-400 bg-violet-50 ring-2 ring-violet-100":"border-slate-200"}`}><b className="block">◇ Sell Tickets</b><span className="mt-1 block text-xs text-slate-500">Set ticket prices and quantity.</span></button></div>
-     {ticketMode==="sell"&&<div className="mt-4 grid gap-4 rounded-xl bg-violet-50/70 p-4 sm:grid-cols-3"><label className="formlabel">Ticket name<input value={ticketName} onChange={e=>setTicketName(e.target.value)} required className={inputClass}/></label><label className="formlabel">Price (INR)<input type="number" min="0" step="0.01" value={price} onChange={e=>setPrice(e.target.value)} required className={inputClass}/></label><label className="formlabel">Quantity<input type="number" min="1" step="1" value={quantity} onChange={e=>setQuantity(e.target.value)} required className={inputClass}/></label></div>}
-     {ticketMode==="rsvp"&&<div className="mt-4 rounded-xl bg-violet-50 p-4"><label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={limitRsvp} onChange={e=>setLimitRsvp(e.target.checked)} className="mt-1 accent-violet-600"/><span><b className="block">Limit RSVPs</b><small className="text-slate-500">Set a maximum number of attendees.</small></span></label>{limitRsvp&&<input type="number" min="1" value={rsvpLimit} onChange={e=>setRsvpLimit(e.target.value)} placeholder="Maximum RSVPs" className={inputClass}/>}<p className="mt-2 text-xs text-slate-500">RSVP limits are not stored in the current database schema.</p></div>}
-     <button type="button" onClick={()=>setSection("flyer")} className="mt-5 w-full rounded-xl bg-violet-50 px-4 py-3 font-bold text-violet-700">Continue to Flyer →</button></section>}
+  const [organizationName, setOrganizationName] = useState("");
+  const [organization, setOrganization] = useState(null);
 
-    {section==="flyer"&&<section className="section-card"><div className="mb-5 flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-violet-50 text-xl text-violet-700">▧</span><div><h2 className="font-extrabold">{heading.flyer}</h2><p className="text-xs text-slate-500">Choose a flyer from the gallery or upload your own.</p></div></div>
-     {preview&&<div className="mb-4 overflow-hidden rounded-xl border border-violet-100 bg-slate-50"><img src={preview} alt="Selected flyer" className="mx-auto max-h-64 w-full object-contain sm:max-h-80"/><div className="flex items-center border-t border-violet-100 bg-white p-3"><div className="min-w-0 flex-1"><b className="block truncate text-sm">{flyer?.name||template||"Selected flyer"}</b><small className="text-slate-500">Flyer selected</small></div><button type="button" onClick={removeFlyer} className="text-xs font-bold text-rose-600">Remove</button></div></div>}
-     <div className="grid grid-cols-2 gap-3"><button type="button" onClick={()=>setGalleryOpen(v=>!v)} className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-3 text-sm font-bold text-violet-700">{galleryOpen?"Close Gallery":"Browse Gallery"}</button><button type="button" onClick={()=>fileInput.current?.click()} className="rounded-xl border border-dashed border-pink-300 bg-pink-50 px-3 py-3 text-sm font-bold text-pink-700">＋ Upload Flyer</button></div>
-     <input ref={fileInput} type="file" accept="image/*" onChange={handleFlyer} className="hidden"/>
-     {galleryOpen&&<div className="mt-4 space-y-3"><input value={flyerSearch} onChange={e=>setFlyerSearch(e.target.value)} placeholder="Search flyers..." className={inputClass}/><select value={flyerCategory} onChange={e=>setFlyerCategory(e.target.value)} className={inputClass}>{["All",...CATEGORIES].map(c=><option key={c}>{c}</option>)}</select><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{visibleFlyers.map(f=><button type="button" key={f.image} onClick={()=>selectTemplate(f)} className="overflow-hidden rounded-xl border border-slate-200 text-left hover:border-violet-400"><img src={f.image} alt={f.name} className="h-28 w-full object-cover"/><span className="block truncate p-2 text-xs font-bold">{f.name}</span></button>)}</div>{!visibleFlyers.length&&<p className="text-sm text-slate-500">No flyers found.</p>}</div>}
-     <p className="mt-3 text-xs text-slate-500">JPG, PNG or WebP · Maximum 5 MB</p><button type="button" onClick={()=>setSection("additional")} className="mt-5 w-full rounded-xl bg-violet-50 px-4 py-3 font-bold text-violet-700">Continue to Additional Info →</button></section>}
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [section, setSection] = useState("details");
+  const [previewMode, setPreviewMode] = useState("desktop");
+  const [recurring, setRecurring] = useState(false);
+  const [limitRsvp, setLimitRsvp] = useState(false);
+  const [rsvpLimit, setRsvpLimit] = useState("100");
 
-    {section==="additional"&&<section className="section-card"><div className="mb-5 flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-violet-50 text-xl text-violet-700">◎</span><div><h2 className="font-extrabold">{heading.additional}</h2><p className="text-xs text-slate-500">Information about the organizer.</p></div></div><label className="formlabel block">Organization Name *{organization?<div className="mt-2 rounded-xl border border-violet-100 bg-violet-50 p-4 font-bold text-violet-800">{organization.name}<p className="mt-1 text-xs font-normal text-slate-500">Linked to your existing organization.</p></div>:<input value={organizationName} onChange={e=>setOrganizationName(e.target.value)} placeholder="Your organization name" className={inputClass}/>}</label><div className="mt-5 rounded-xl bg-violet-50 p-4"><b className="text-sm text-violet-800">Almost ready to publish!</b><p className="mt-1 text-xs leading-5 text-slate-600">Check your event details, location, ticket settings and flyer before publishing.</p></div></section>}
+  useEffect(() => {
+    let active = true;
 
-    {error&&<div role="alert" className="break-words rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800">{error}</div>}{notice&&<div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">{notice}</div>}
-    <div className="rounded-2xl border border-violet-100 bg-white p-3 shadow-sm sm:p-4"><div className="flex flex-col gap-3 sm:flex-row"><button type="button" disabled={loading} onClick={()=>saveEvent(null,"draft")} className="w-full rounded-xl border border-violet-200 px-4 py-3.5 text-sm font-bold text-violet-700 disabled:opacity-50 sm:flex-1">{loading?"Saving...":"Save Draft"}</button><button id="publish-event" type="submit" disabled={loading} className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 px-4 py-3.5 text-sm font-bold text-white shadow-md shadow-violet-200 disabled:opacity-50 sm:flex-[1.4]">{loading?"Please wait...":"Publish Event →"}</button></div><p className="mt-3 text-center text-xs text-slate-400">VYBE · Make your next event happen</p></div>
-   </form>
-  </div>
- </main>;
+    async function loadTemplates() {
+      const all = [...DEFAULT_FLYERS];
+      let offset = 0;
+
+      try {
+        while (true) {
+          const { data, error } = await supabase.storage
+            .from(BUCKET)
+            .list("templates", {
+              limit: 100,
+              offset,
+              sortBy: { column: "name", order: "asc" }
+            });
+
+          if (error || !data?.length) break;
+
+          for (const item of data) {
+            if (!item.name || item.name.startsWith(".")) continue;
+
+            const ext = item.name.split(".").pop()?.toLowerCase();
+            if (!["jpg", "jpeg", "png", "webp", "avif"].includes(ext)) continue;
+
+            const { data: publicData } = supabase.storage
+              .from(BUCKET)
+              .getPublicUrl(`templates/${item.name}`);
+
+            if (publicData?.publicUrl) {
+              all.push({
+                name: item.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " "),
+                category: "Other",
+                image: publicData.publicUrl
+              });
+            }
+          }
+
+          if (data.length < 100) break;
+          offset += 100;
+        }
+      } catch {}
+
+      if (active) setFlyers(all);
+    }
+
+    loadTemplates();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadOrg() {
+      try {
+        const { data: sd } = await supabase.auth.getSession();
+        const user = sd?.session?.user;
+
+        if (!user) {
+          router.replace("/auth");
+          return;
+        }
+
+        const { data } = await supabase
+          .from("organizations")
+          .select("id,name,slug")
+          .eq("owner_id", user.id)
+          .limit(1)
+          .maybeSingle();
+
+        if (active && data) {
+          setOrganization(data);
+          setOrganizationName(data.name);
+        }
+      } catch {}
+    }
+
+    loadOrg();
+    return () => { active = false; };
+  }, [router]);
+
+  useEffect(() => {
+    if (address.trim().length < 3 || selectedPlace) {
+      setPlaces([]);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(
+          "https://photon.komoot.io/api/?limit=6&q=" +
+            encodeURIComponent(address),
+          { signal: controller.signal }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          setPlaces(data.features || []);
+        }
+      } catch (err) {
+        if (err.name !== "AbortError") setPlaces([]);
+      }
+    }, 450);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [address, selectedPlace]);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    };
+  }, []);
+
+  function setLocalPreview(file) {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+    }
+
+    objectUrlRef.current = file ? URL.createObjectURL(file) : "";
+    setPreview(objectUrlRef.current);
+  }
+
+  function selectTemplate(item) {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+
+    objectUrlRef.current = "";
+    setTemplate(item.name);
+    setCategory(item.category === "Other" ? category : item.category);
+    setFlyer(null);
+    setPreview(item.image);
+    setGalleryOpen(false);
+    setError("");
+
+    if (fileInput.current) fileInput.current.value = "";
+  }
+
+  function handleFlyer(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file.");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image must be smaller than 5 MB.");
+      e.target.value = "";
+      return;
+    }
+
+    setFlyer(file);
+    setTemplate("");
+    setLocalPreview(file);
+    setError("");
+  }
+
+  function removeFlyer() {
+    setFlyer(null);
+    setTemplate("");
+    setLocalPreview(null);
+
+    if (fileInput.current) fileInput.current.value = "";
+  }
+
+  function choosePlace(place) {
+    const p = place.properties || {};
+    const coords = place.geometry?.coordinates || [];
+    const city = p.city || p.town || p.village || p.county || "";
+
+    const label = [
+      p.name, p.street, p.housenumber, city, p.state, p.country
+    ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(", ");
+
+    setSelectedPlace({
+      label,
+      city,
+      country: p.country || "",
+      latitude: coords[1] ?? null,
+      longitude: coords[0] ?? null
+    });
+
+    setAddress(label);
+    setPlaces([]);
+  }
+
+  async function saveEvent(e, status = "published") {
+    e?.preventDefault?.();
+    setError("");
+    setNotice("");
+
+    const isDraft = status === "draft";
+
+    if (!title.trim()) {
+      setError("Enter an event title.");
+      setSection("details");
+      return;
+    }
+
+    if (!isDraft && !description.trim()) {
+      setError("Enter an event description.");
+      setSection("details");
+      return;
+    }
+
+    if (!isDraft && !preview) {
+      setError("Choose a flyer or upload a photo.");
+      setSection("flyer");
+      return;
+    }
+
+    if (!isDraft && !selectedPlace) {
+      setError("Search for a location and select a suggestion.");
+      setSection("location");
+      return;
+    }
+
+    if (!isDraft && (!startsAt || new Date(startsAt) <= new Date())) {
+      setError("Choose a future start date and time.");
+      setSection("details");
+      return;
+    }
+
+    if (endsAt && startsAt && new Date(endsAt) <= new Date(startsAt)) {
+      setError("End time must be after start time.");
+      setSection("details");
+      return;
+    }
+
+    if (
+      !isDraft &&
+      ticketMode === "sell" &&
+      (!ticketName.trim() ||
+        !Number.isFinite(Number(price)) ||
+        Number(price) < 0 ||
+        !Number.isInteger(Number(quantity)) ||
+        Number(quantity) < 1)
+    ) {
+      setError("Check ticket name, price, and quantity.");
+      setSection("tickets");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { data: sd, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+
+      const user = sd?.session?.user;
+
+      if (!user) {
+        router.replace("/auth");
+        return;
+      }
+
+      let org = organization;
+
+      if (!org) {
+        const name = organizationName.trim();
+
+        if (!name) {
+          setSection("additional");
+          throw new Error("Enter your organization name.");
+        }
+
+        const slugBase =
+          name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
+          "organization";
+
+        const { data, error } = await supabase
+          .from("organizations")
+          .insert({
+            owner_id: user.id,
+            name,
+            slug: slugBase + "-" + Date.now().toString(36)
+          })
+          .select("id,name,slug")
+          .single();
+
+        if (error) throw new Error("Organization: " + error.message);
+
+        org = data;
+        setOrganization(data);
+      }
+
+      let imageUrl = preview || null;
+
+      if (flyer) {
+        const safeName = flyer.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+        const path = `${user.id}/${Date.now()}-${safeName}`;
+
+        const { error } = await supabase.storage
+          .from(BUCKET)
+          .upload(path, flyer, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: flyer.type
+          });
+
+        if (error) throw new Error("Flyer upload: " + error.message);
+
+        imageUrl = supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+      }
+
+      const base =
+        title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "").slice(0, 55) || "event";
+
+      const slug = base + "-" + Date.now().toString(36);
+
+      const { data: savedEvent, error: saveError } = await supabase
+        .from("events")
+        .insert({
+          title: title.trim(),
+          description: description.trim() || "",
+          venue: venue.trim() || selectedPlace?.label || null,
+          city: selectedPlace?.city || null,
+          country: selectedPlace?.country || null,
+          location_address: selectedPlace?.label || null,
+          latitude: selectedPlace?.latitude ?? null,
+          longitude: selectedPlace?.longitude ?? null,
+          category,
+          starts_at: startsAt ? new Date(startsAt).toISOString() : null,
+          ends_at: endsAt ? new Date(endsAt).toISOString() : null,
+          ticket_mode: ticketMode,
+          price: ticketMode === "sell" ? Number(price) : 0,
+          currency: "INR",
+          image_url: imageUrl,
+          slug,
+          status,
+          organizer_id: user.id,
+          organization_id: org.id
+        })
+        .select("id")
+        .single();
+
+      if (saveError) throw new Error("Event save: " + saveError.message);
+
+      if (!isDraft && ticketMode === "sell") {
+        const { error } = await supabase.from("event_ticket_types").insert({
+          event_id: savedEvent.id,
+          name: ticketName.trim(),
+          price: Number(price),
+          quantity: Number(quantity),
+          currency: "INR"
+        });
+
+        if (error) {
+          await supabase
+            .from("events")
+            .update({ status: "draft" })
+            .eq("id", savedEvent.id)
+            .eq("organizer_id", user.id);
+
+          throw new Error(
+            "Ticket setup failed; event returned to draft if permitted: " +
+            error.message
+          );
+        }
+      }
+
+      if (isDraft) {
+        setNotice("Draft saved successfully.");
+      } else {
+        router.push("/events/" + slug);
+      }
+    } catch (err) {
+      setError(err?.message || "Could not save the event.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const visibleFlyers = flyers
+    .filter((f) => f.name.toLowerCase().includes(flyerSearch.trim().toLowerCase()))
+    .filter((f) => flyerCategory === "All" || f.category === flyerCategory);
+
+  const sections = [
+    { id: "details", label: "Event Details", icon: "▣" },
+    { id: "location", label: "Location", icon: "⌖" },
+    { id: "tickets", label: "Tickets & RSVP", icon: "♧" },
+    { id: "flyer", label: "Flyer", icon: "▧" },
+    { id: "additional", label: "Additional Info", icon: "◎" }
+  ];
+
+  const heading = {
+    details: "Event Details",
+    location: "Event Location",
+    tickets: "Tickets & RSVP",
+    flyer: "Flyer / Event Image",
+    additional: "Additional Information"
+  };
+
+  return (
+    <main className="min-h-screen overflow-x-hidden bg-gradient-to-br from-violet-50 via-white to-pink-50 text-slate-900">
+      <style jsx global>{`
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, Helvetica, sans-serif; }
+        .formlabel {
+          display: block;
+          width: 100%;
+          min-width: 0;
+          font-size: 12px;
+          font-weight: 800;
+          color: #302641;
+          line-height: 1.5;
+        }
+        .formlabel input,
+        .formlabel select,
+        .formlabel textarea {
+          display: block;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
+        }
+        .section-card {
+          width: 100%;
+          min-width: 0;
+          border: 1px solid #eee5f8;
+          border-radius: 17px;
+          background: white;
+          padding: 16px;
+          box-shadow: 0 5px 18px #45206a08;
+        }
+        @media (min-width: 640px) {
+          .section-card { padding: 22px; }
+        }
+        @media (max-width: 639px) {
+          input, select, textarea, button { max-width: 100%; }
+          input[type="datetime-local"] { font-size: 13px; }
+        }
+      `}</style>
+
+      <header className="sticky top-0 z-30 border-b border-violet-100 bg-white/95 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-3 py-3 sm:gap-3 sm:px-6">
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="shrink-0 text-2xl font-black tracking-tight text-violet-700"
+          >
+            VYBE<span className="text-pink-500">.</span>
+          </button>
+
+          <nav className="ml-2 hidden items-center gap-5 text-xs font-bold text-slate-600 md:flex">
+            <Link href="/">Home</Link>
+            <Link href="/events">Explore Events</Link>
+          </nav>
+
+          <div className="flex-1" />
+
+          <button
+            type="button"
+            onClick={() => router.push("/my-events")}
+            className="rounded-xl px-2 py-2 text-xs font-bold text-slate-600 hover:bg-violet-50 sm:px-3"
+          >
+            My Events
+          </button>
+
+          <button
+            type="button"
+            onClick={() => saveEvent(null, "draft")}
+            disabled={loading}
+            className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-xs font-bold text-violet-700 sm:px-4"
+          >
+            Save Draft
+          </button>
+
+          <button
+            type="button"
+            onClick={() => document.getElementById("publish-event")?.click()}
+            disabled={loading}
+            className="rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 px-3 py-2.5 text-xs font-bold text-white sm:px-4"
+          >
+            Publish
+          </button>
+        </div>
+      </header>
+
+      <div className="mx-auto w-full max-w-7xl px-3 py-5 sm:px-6 sm:py-7">
+        <div className="mb-5">
+          <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
+            Create{" "}
+            <span className="bg-gradient-to-r from-violet-700 to-pink-500 bg-clip-text text-transparent">
+              Event
+            </span>
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Fill in the details below to create and publish your event.
+          </p>
+        </div>
+
+        <nav className="mb-5 grid grid-cols-2 gap-2 rounded-2xl border border-violet-100 bg-white p-2 shadow-sm sm:grid-cols-3 lg:grid-cols-5">
+          {sections.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSection(s.id)}
+              className={`min-w-0 rounded-xl px-2 py-3 text-center transition ${
+                section === s.id
+                  ? "bg-gradient-to-r from-violet-600 to-pink-500 text-white shadow-md"
+                  : "text-slate-500 hover:bg-violet-50 hover:text-violet-700"
+              }`}
+            >
+              <span className="block text-base sm:text-lg">{s.icon}</span>
+              <span className="mt-1 block whitespace-normal text-xs font-bold leading-tight">
+                {s.label}
+              </span>
+            </button>
+          ))}
+        </nav>
+
+        <form onSubmit={(e) => saveEvent(e, "published")} className="min-w-0 space-y-4">
+          {section === "details" && (
+            <section className="section-card">
+              <div className="mb-5 flex items-center gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-violet-50 text-xl text-violet-700">▣</span>
+                <div className="min-w-0">
+                  <h2 className="text-lg font-extrabold">{heading.details}</h2>
+                  <p className="text-xs text-slate-500">Basic information about your event.</p>
+                </div>
+              </div>
+
+              <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-[1.3fr_.7fr]">
+                <label className="formlabel">
+                  Event Title *
+                  <input required maxLength={160} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Neon Nights Music Festival" className={inputClass} />
+                </label>
+
+                <label className="formlabel">
+                  Category
+                  <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputClass}>
+                    {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              <label className="formlabel mt-4">
+                Description *
+                <textarea required rows={4} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Tell people what makes your event special..." className={`${inputClass} resize-y`} />
+              </label>
+
+              <div className="mt-4 grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="formlabel">
+                  Start date and time *
+                  <input required type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={inputClass} />
+                </label>
+
+                <label className="formlabel">
+                  End date and time
+                  <input type="datetime-local" min={startsAt || undefined} value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className={inputClass} />
+                </label>
+              </div>
+
+              <label className="mt-4 flex min-w-0 items-start gap-3 rounded-xl bg-violet-50 p-3 text-sm">
+                <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} className="mt-1 shrink-0 accent-violet-600" />
+                <span>
+                  <b className="block">Recurring event</b>
+                  <small className="text-slate-500">Visual setting; recurrence is not saved in the current schema.</small>
+                </span>
+              </label>
+
+              <button type="button" onClick={() => setSection("location")} className="mt-5 w-full rounded-xl bg-violet-50 px-4 py-3 font-bold text-violet-700">
+                Continue to Location →
+              </button>
+            </section>
+          )}
+
+          {section === "location" && (
+            <section className="section-card">
+              <div className="mb-5 flex items-center gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-violet-50 text-xl text-violet-700">⌖</span>
+                <div>
+                  <h2 className="text-lg font-extrabold">{heading.location}</h2>
+                  <p className="text-xs text-slate-500">Search for a location anywhere in the world.</p>
+                </div>
+              </div>
+
+              <label className="formlabel">
+                Search city, address or venue *
+                <input value={address} onChange={(e) => { setAddress(e.target.value); setSelectedPlace(null); }} placeholder="Search city, address or venue..." autoComplete="off" className={inputClass} />
+              </label>
+
+              {places.length > 0 && (
+                <div className="mt-2 max-h-60 overflow-y-auto rounded-xl border border-violet-100 bg-white shadow-lg">
+                  {places.map((p, i) => (
+                    <button key={p.properties?.osm_id || i} type="button" onClick={() => choosePlace(p)} className="block w-full border-b border-slate-100 p-3 text-left last:border-0 hover:bg-violet-50">
+                      <b className="block text-sm">{p.properties?.name || p.properties?.street || "Location"}</b>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {[p.properties?.city || p.properties?.town || p.properties?.village, p.properties?.state, p.properties?.country].filter(Boolean).join(", ")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {selectedPlace && (
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                  <b>✓ Location selected</b>
+                  <p className="mt-1 break-words">{selectedPlace.label}</p>
+                  <button type="button" onClick={() => { setSelectedPlace(null); setAddress(""); }} className="mt-2 text-xs underline">Change location</button>
+                </div>
+              )}
+
+              <label className="formlabel mt-4">
+                Venue Name
+                <input value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="e.g. Club, Stadium, Cafe" className={inputClass} />
+              </label>
+
+              <button type="button" onClick={() => setSection("tickets")} className="mt-5 w-full rounded-xl bg-violet-50 px-4 py-3 font-bold text-violet-700">
+                Continue to Tickets →
+              </button>
+            </section>
+          )}
+
+          {section === "tickets" && (
+            <section className="section-card">
+              <div className="mb-5 flex items-center gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-pink-50 text-xl text-pink-600">♧</span>
+                <div>
+                  <h2 className="text-lg font-extrabold">{heading.tickets}</h2>
+                  <p className="text-xs text-slate-500">Choose how people can join your event.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button type="button" onClick={() => setTicketMode("rsvp")} className={`rounded-xl border p-4 text-left ${ticketMode === "rsvp" ? "border-pink-400 bg-pink-50 ring-2 ring-pink-100" : "border-slate-200"}`}>
+                  <b className="block">▣ Free RSVP</b>
+                  <span className="mt-1 block text-xs text-slate-500">Let people RSVP for free.</span>
+                </button>
+
+                <button type="button" onClick={() => setTicketMode("sell")} className={`rounded-xl border p-4 text-left ${ticketMode === "sell" ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100" : "border-slate-200"}`}>
+                  <b className="block">◇ Sell Tickets</b>
+                  <span className="mt-1 block text-xs text-slate-500">Set ticket prices and quantity.</span>
+                </button>
+              </div>
+
+              {ticketMode === "sell" && (
+                <div className="mt-4 grid min-w-0 grid-cols-1 gap-4 rounded-xl bg-violet-50/70 p-4 sm:grid-cols-3">
+                  <label className="formlabel">Ticket name<input value={ticketName} onChange={(e) => setTicketName(e.target.value)} required className={inputClass} /></label>
+                  <label className="formlabel">Price (INR)<input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required className={inputClass} /></label>
+                  <label className="formlabel">Quantity<input type="number" min="1" step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} required className={inputClass} /></label>
+                </div>
+              )}
+
+              {ticketMode === "rsvp" && (
+                <div className="mt-4 rounded-xl bg-violet-50 p-4">
+                  <label className="flex items-start gap-3 text-sm">
+                    <input type="checkbox" checked={limitRsvp} onChange={(e) => setLimitRsvp(e.target.checked)} className="mt-1 accent-violet-600" />
+                    <span><b className="block">Limit RSVPs</b><small className="text-slate-500">Set a maximum number of attendees.</small></span>
+                  </label>
+                  {limitRsvp && <input type="number" min="1" value={rsvpLimit} onChange={(e) => setRsvpLimit(e.target.value)} placeholder="Maximum RSVPs" className={inputClass} />}
+                  <p className="mt-2 text-xs text-slate-500">RSVP limits are not stored in the current database schema.</p>
+                </div>
+              )}
+
+              <button type="button" onClick={() => setSection("flyer")} className="mt-5 w-full rounded-xl bg-violet-50 px-4 py-3 font-bold text-violet-700">
+                Continue to Flyer →
+              </button>
+            </section>
+          )}
+
+          {section === "flyer" && (
+            <section className="section-card">
+              <div className="mb-5 flex items-center gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-violet-50 text-xl text-violet-700">▧</span>
+                <div>
+                  <h2 className="text-lg font-extrabold">{heading.flyer}</h2>
+                  <p className="text-xs text-slate-500">Choose a flyer from the gallery or upload your own.</p>
+                </div>
+              </div>
+
+              {preview && (
+                <div className="mb-4 overflow-hidden rounded-xl border border-violet-100 bg-slate-50">
+                  <img src={preview} alt="Selected flyer" className="mx-auto max-h-64 w-full object-contain sm:max-h-80" />
+                  <div className="flex items-center border-t border-violet-100 bg-white p-3">
+                    <div className="min-w-0 flex-1">
+                      <b className="block truncate text-sm">{flyer?.name || template || "Selected flyer"}</b>
+                      <small className="text-slate-500">Flyer selected</small>
+                    </div>
+                    <button type="button" onClick={removeFlyer} className="text-xs font-bold text-rose-600">Remove</button>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button type="button" onClick={() => setGalleryOpen((v) => !v)} className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-3 text-sm font-bold text-violet-700">
+                  {galleryOpen ? "Close Gallery" : "Browse Gallery"}
+                </button>
+                <button type="button" onClick={() => fileInput.current?.click()} className="rounded-xl border border-dashed border-pink-300 bg-pink-50 px-3 py-3 text-sm font-bold text-pink-700">
+                  ＋ Upload Flyer
+                </button>
+              </div>
+
+              <input ref={fileInput} type="file" accept="image/*" onChange={handleFlyer} className="hidden" />
+
+              {galleryOpen && (
+                <div className="mt-4 space-y-3">
+                  <input value={flyerSearch} onChange={(e) => setFlyerSearch(e.target.value)} placeholder="Search flyers..." className={inputClass} />
+                  <select value={flyerCategory} onChange={(e) => setFlyerCategory(e.target.value)} className={inputClass}>
+                    {["All", ...CATEGORIES].map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {visibleFlyers.map((f) => (
+                      <button type="button" key={f.image} onClick={() => selectTemplate(f)} className="overflow-hidden rounded-xl border border-slate-200 text-left hover:border-violet-400">
+                        <img src={f.image} alt={f.name} className="h-28 w-full object-cover" />
+                        <span className="block truncate p-2 text-xs font-bold">{f.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {!visibleFlyers.length && <p className="text-sm text-slate-500">No flyers found.</p>}
+                </div>
+              )}
+
+              <p className="mt-3 text-xs text-slate-500">JPG, PNG or WebP · Maximum 5 MB</p>
+              <button type="button" onClick={() => setSection("additional")} className="mt-5 w-full rounded-xl bg-violet-50 px-4 py-3 font-bold text-violet-700">
+                Continue to Additional Info →
+              </button>
+            </section>
+          )}
+
+          {section === "additional" && (
+            <section className="section-card">
+              <div className="mb-5 flex items-center gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-violet-50 text-xl text-violet-700">◎</span>
+                <div>
+                  <h2 className="text-lg font-extrabold">{heading.additional}</h2>
+                  <p className="text-xs text-slate-500">Information about the organizer.</p>
+                </div>
+              </div>
+
+              <label className="formlabel">
+                Organization Name *
+                {organization ? (
+                  <div className="mt-2 rounded-xl border border-violet-100 bg-violet-50 p-4 font-bold text-violet-800">
+                    {organization.name}
+                    <p className="mt-1 text-xs font-normal text-slate-500">Linked to your existing organization.</p>
+                  </div>
+                ) : (
+                  <input value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} placeholder="Your organization name" className={inputClass} />
+                )}
+              </label>
+
+              <div className="mt-5 rounded-xl bg-violet-50 p-4">
+                <b className="text-sm text-violet-800">Almost ready to publish!</b>
+                <p className="mt-1 text-xs leading-5 text-slate-600">Check your event details, location, ticket settings and flyer before publishing.</p>
+              </div>
+            </section>
+          )}
+
+          {error && (
+            <div role="alert" className="break-words rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800">
+              {error}
+            </div>
+          )}
+
+          {notice && (
+            <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
+              {notice}
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-violet-100 bg-white p-3 shadow-sm sm:p-4">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button type="button" disabled={loading} onClick={() => saveEvent(null, "draft")} className="w-full rounded-xl border border-violet-200 px-4 py-3.5 text-sm font-bold text-violet-700 disabled:opacity-50 sm:flex-1">
+                {loading ? "Saving..." : "Save Draft"}
+              </button>
+              <button id="publish-event" type="submit" disabled={loading} className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 px-4 py-3.5 text-sm font-bold text-white shadow-md shadow-violet-200 disabled:opacity-50 sm:flex-[1.4]">
+                {loading ? "Please wait..." : "Publish Event →"}
+              </button>
+            </div>
+            <p className="mt-3 text-center text-xs text-slate-400">VYBE · Make your next event happen</p>
+          </div>
+        </form>
+
+        {error && (
+          <div className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2">
+            <p role="alert" className="break-words rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800 shadow-xl">{error}</p>
+          </div>
+        )}
+      </div>
+    </main>
+  );
 }
