@@ -19,15 +19,22 @@ export default function AuthPage() {
     let active = true;
 
     async function checkSession() {
-      const { data, error } = await supabase.auth.getSession();
-      if (!active) return;
+      try {
+        const { data, error } = await supabase.auth.getSession();
 
-      if (!error && data.session) {
-        router.replace("/");
-        return;
+        if (!active) return;
+
+        if (error) throw error;
+
+        if (data.session) {
+          router.replace("/");
+          return;
+        }
+      } catch (err) {
+        if (active) setError(err.message || "Unable to check login.");
       }
 
-      setChecking(false);
+      if (active) setChecking(false);
     }
 
     checkSession();
@@ -35,7 +42,7 @@ export default function AuthPage() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) router.replace("/");
+      if (active && session) router.replace("/");
     });
 
     return () => {
@@ -55,7 +62,9 @@ export default function AuthPage() {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { emailRedirectTo: window.location.origin },
+          options: {
+            emailRedirectTo: window.location.origin,
+          },
         });
 
         if (error) throw error;
@@ -65,7 +74,9 @@ export default function AuthPage() {
           return;
         }
 
-        setMessage("Account created. Please check your email to verify it.");
+        setMessage(
+          "Account created. Please check your email to verify your account."
+        );
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -79,10 +90,10 @@ export default function AuthPage() {
           return;
         }
 
-        setMessage("Please verify your email and try again.");
+        setMessage("Please verify your email and try signing in again.");
       }
     } catch (err) {
-      setError(err.message || "Please try again.");
+      setError(err.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -90,26 +101,26 @@ export default function AuthPage() {
 
   if (checking) {
     return (
-      <main className="auth-loading">
-        <span className="auth-logo">VYBE</span>
-        <p>Loading your experience...</p>
+      <main className="loading-page">
+        <div className="logo">Party <span>Event</span></div>
+        <p>Checking your account...</p>
         <style jsx>{`
-          .auth-loading {
+          .loading-page {
             min-height: 100dvh;
             display: grid;
-            place-content: center;
+            align-content: center;
             justify-items: center;
             background: #f5f1ff;
             color: #51466f;
             font-family: Arial, sans-serif;
           }
-          .auth-logo {
-            font-size: 42px;
+          .logo {
+            font-size: 34px;
             font-weight: 900;
-            letter-spacing: -2px;
-            background: linear-gradient(110deg, #7436ed, #f02c91);
-            color: transparent;
-            background-clip: text;
+            color: #7436ed;
+          }
+          .logo span {
+            color: #f02c91;
           }
         `}</style>
       </main>
@@ -118,17 +129,10 @@ export default function AuthPage() {
 
   return (
     <main className="auth-page">
-      <div className="auth-glow auth-glow-one" />
-      <div className="auth-glow auth-glow-two" />
-
       <section className="auth-layout">
-        <div className="auth-intro">
-          <button
-            className="brand"
-            type="button"
-            onClick={() => router.push("/")}
-          >
-            VYBE<span>.</span>
+        <div className="intro">
+          <button className="brand" onClick={() => router.push("/")}>
+            Party <span>Event</span>
           </button>
 
           <div className="intro-copy">
@@ -145,24 +149,22 @@ export default function AuthPage() {
               tickets or offer free RSVPs — all in one place.
             </p>
 
-            <div className="intro-feature">
-              <span className="feature-icon">▣</span>
+            <div className="feature">
+              <b>✦</b>
               <div>
                 <strong>Explore Events</strong>
-                <small>Find amazing events around the world</small>
+                <small>Find events around the world</small>
               </div>
             </div>
-
-            <div className="intro-feature">
-              <span className="feature-icon">＋</span>
+            <div className="feature">
+              <b>＋</b>
               <div>
                 <strong>Create Events</strong>
                 <small>Share your event with the community</small>
               </div>
             </div>
-
-            <div className="intro-feature">
-              <span className="feature-icon">◇</span>
+            <div className="feature">
+              <b>◇</b>
               <div>
                 <strong>Free RSVP or Tickets</strong>
                 <small>Bring your audience together</small>
@@ -171,19 +173,21 @@ export default function AuthPage() {
           </div>
 
           <div className="intro-footer">
-            Your events. Your people. Your VYBE.
+            Your events. Your people. Your Party Event.
           </div>
         </div>
 
-        <div className="auth-card-wrap">
+        <div className="card-wrap">
           <section className="auth-card">
-            <div className="card-brand">VYBE<span>.</span></div>
+            <div className="card-brand">
+              Party <span>Event</span>
+            </div>
 
-            <h2>{mode === "login" ? "Welcome Back!" : "Join VYBE"}</h2>
-            <p className="card-subtitle">
+            <h2>{mode === "login" ? "Welcome Back!" : "Create Account"}</h2>
+            <p className="subtitle">
               {mode === "login"
-                ? "Sign in to your account to continue"
-                : "Create an account to discover and organize events"}
+                ? "Sign in to discover and organize events"
+                : "Join Party Event and discover amazing events"}
             </p>
 
             <div className="mode-switch">
@@ -196,69 +200,48 @@ export default function AuthPage() {
                   setMessage("");
                 }}
               >
-                ✉ Email
+                Email Login
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  setMessage(
-                    "Phone login is not configured yet. Please use email."
-                  )
-                }
+                className={mode === "signup" ? "active" : ""}
+                onClick={() => {
+                  setMode("signup");
+                  setError("");
+                  setMessage("");
+                }}
               >
-                ☎ Phone
+                Sign Up
               </button>
             </div>
 
             <form onSubmit={handleSubmit}>
               <label htmlFor="auth-email">Email address</label>
-              <div className="input-wrap">
-                <span>✉</span>
-                <input
-                  id="auth-email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="Enter your email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
+              <input
+                id="auth-email"
+                type="email"
+                autoComplete="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
 
               <label htmlFor="auth-password">Password</label>
-              <div className="input-wrap">
-                <span>♙</span>
-                <input
-                  id="auth-password"
-                  type="password"
-                  autoComplete={
-                    mode === "login" ? "current-password" : "new-password"
-                  }
-                  placeholder="Enter your password"
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
+              <input
+                id="auth-password"
+                type="password"
+                autoComplete={
+                  mode === "login" ? "current-password" : "new-password"
+                }
+                placeholder="At least 6 characters"
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
 
-              {mode === "login" && (
-                <div className="remember-row">
-                  <span>Secure sign in</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setMessage(
-                        "For password recovery, use your Supabase configured recovery flow."
-                      )
-                    }
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-              )}
-
-              <button className="submit-button" disabled={loading}>
+              <button className="submit" type="submit" disabled={loading}>
                 {loading
                   ? "Please wait..."
                   : mode === "login"
@@ -270,39 +253,10 @@ export default function AuthPage() {
             {message && <p className="notice">{message}</p>}
             {error && <p className="error" role="alert">{error}</p>}
 
-            <div className="or-divider"><span>OR</span></div>
-
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() =>
-                setMessage(
-                  "Google sign in needs to be enabled in your Supabase authentication settings."
-                )
-              }
-            >
-              <span className="google-mark">G</span>
-              Continue with Google
-            </button>
-
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() =>
-                setMessage(
-                  "Apple sign in needs to be enabled in your Supabase authentication settings."
-                )
-              }
-            >
-              <span className="apple-mark">●</span>
-              Continue with Apple
-            </button>
-
             <p className="switch-copy">
               {mode === "login"
                 ? "Don't have an account?"
-                : "Already registered?"}
-              {" "}
+                : "Already registered?"}{" "}
               <button
                 type="button"
                 onClick={() => {
@@ -314,74 +268,51 @@ export default function AuthPage() {
                 {mode === "login" ? "Create Account" : "Sign In"}
               </button>
             </p>
+
+            <button className="back-home" onClick={() => router.push("/")}>
+              ← Back to Party Event
+            </button>
           </section>
         </div>
       </section>
 
       <style jsx>{`
         .auth-page {
-          position: relative;
           min-height: 100dvh;
-          overflow: hidden;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 28px;
+          display: grid;
+          place-items: center;
+          padding: 24px;
+          box-sizing: border-box;
           color: #17152b;
           background: linear-gradient(125deg, #f5f0ff, #fff7fc 55%, #f0edff);
           font-family: Arial, Helvetica, sans-serif;
         }
-        .auth-glow {
-          position: absolute;
-          width: 340px;
-          height: 340px;
-          border-radius: 50%;
-          filter: blur(95px);
-          pointer-events: none;
-        }
-        .auth-glow-one {
-          top: -140px;
-          left: -100px;
-          background: #cbb6ff;
-          opacity: .55;
-        }
-        .auth-glow-two {
-          right: -120px;
-          bottom: -150px;
-          background: #ffb8df;
-          opacity: .5;
-        }
         .auth-layout {
-          position: relative;
-          z-index: 1;
           width: 100%;
           max-width: 1050px;
           min-height: 650px;
           display: grid;
           grid-template-columns: 1fr 1fr;
           overflow: hidden;
-          border: 1px solid #ffffff;
-          border-radius: 28px;
-          background: rgba(255,255,255,.46);
-          box-shadow: 0 24px 80px rgba(87,55,148,.14);
+          border: 1px solid white;
+          border-radius: 26px;
+          background: #ffffff80;
+          box-shadow: 0 24px 80px #57379424;
         }
-        .auth-intro {
+        .intro {
           display: flex;
           flex-direction: column;
-          padding: 35px;
-          background:
-            radial-gradient(ellipse at 15% 90%, #e5d8ff 0, transparent 45%),
-            linear-gradient(145deg, #eee6ff, #fff1fa 75%, #f6f2ff);
+          padding: 34px;
+          background: linear-gradient(145deg, #eee6ff, #fff1fa 75%, #f6f2ff);
         }
         .brand {
           width: fit-content;
-          border: 0;
           padding: 0;
+          border: 0;
           background: transparent;
           color: #7436ed;
-          font-size: 34px;
+          font-size: 29px;
           font-weight: 900;
-          letter-spacing: -2px;
           cursor: pointer;
         }
         .brand span,
@@ -390,7 +321,6 @@ export default function AuthPage() {
         }
         .intro-copy {
           margin: auto 0;
-          max-width: 430px;
         }
         .eyebrow {
           color: #7436ed;
@@ -398,17 +328,15 @@ export default function AuthPage() {
           font-weight: 800;
           letter-spacing: 2px;
         }
-        .intro-copy h1 {
+        h1 {
           margin: 18px 0;
           font-size: clamp(43px, 5vw, 65px);
-          line-height: .99;
+          line-height: 0.99;
           font-weight: 900;
           letter-spacing: -3px;
         }
-        .intro-copy h1 span {
-          background: linear-gradient(100deg, #7436ed, #f02c91);
-          color: transparent;
-          background-clip: text;
+        h1 span {
+          color: #a04adf;
         }
         .intro-copy > p {
           max-width: 370px;
@@ -416,13 +344,13 @@ export default function AuthPage() {
           font-size: 14px;
           line-height: 1.8;
         }
-        .intro-feature {
+        .feature {
           display: flex;
           align-items: center;
           gap: 13px;
           margin-top: 20px;
         }
-        .feature-icon {
+        .feature b {
           width: 39px;
           height: 39px;
           display: grid;
@@ -430,18 +358,17 @@ export default function AuthPage() {
           flex-shrink: 0;
           border-radius: 12px;
           color: white;
-          font-size: 23px;
+          font-size: 22px;
           background: linear-gradient(135deg, #7436ed, #f02c91);
-          box-shadow: 0 5px 14px #7436ed30;
         }
-        .intro-feature strong,
-        .intro-feature small {
+        .feature strong,
+        .feature small {
           display: block;
         }
-        .intro-feature strong {
+        .feature strong {
           font-size: 13px;
         }
-        .intro-feature small {
+        .feature small {
           margin-top: 4px;
           color: #716a85;
           font-size: 11px;
@@ -451,36 +378,34 @@ export default function AuthPage() {
           font-size: 12px;
           font-weight: 700;
         }
-        .auth-card-wrap {
+        .card-wrap {
           display: grid;
           place-items: center;
           padding: 28px;
-          background: rgba(255,255,255,.48);
         }
         .auth-card {
           width: 100%;
           max-width: 390px;
+          box-sizing: border-box;
           padding: 32px;
           border: 1px solid #f0eaf9;
           border-radius: 23px;
-          background: #fff;
+          background: white;
           box-shadow: 0 16px 50px #4c307c13;
         }
         .card-brand {
           text-align: center;
-          font-size: 34px;
-          font-weight: 900;
-          letter-spacing: -2px;
           color: #7436ed;
+          font-size: 29px;
+          font-weight: 900;
         }
-        .auth-card h2 {
+        h2 {
           margin: 14px 0 0;
           text-align: center;
           font-size: 24px;
           font-weight: 900;
-          letter-spacing: -.6px;
         }
-        .card-subtitle {
+        .subtitle {
           margin: 8px 0 22px;
           color: #777187;
           text-align: center;
@@ -504,82 +429,48 @@ export default function AuthPage() {
           color: #777187;
           font-size: 12px;
           font-weight: 700;
+          cursor: pointer;
         }
         .mode-switch button.active {
           color: white;
           background: linear-gradient(100deg, #7436ed, #f02c91);
-          box-shadow: 0 4px 12px #7436ed25;
         }
-        .auth-card label {
+        label {
           display: block;
           margin: 15px 0 7px;
           font-size: 12px;
           font-weight: 800;
         }
-        .input-wrap {
-          min-width: 0;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 0 12px;
+        input {
+          width: 100%;
+          box-sizing: border-box;
+          padding: 13px 12px;
           border: 1px solid #e8e4f0;
           border-radius: 11px;
-          background: #fff;
-          color: #827b94;
+          outline: none;
+          background: white;
+          color: #17152b;
+          font-size: 13px;
         }
-        .input-wrap:focus-within {
+        input:focus {
           border-color: #9864f0;
           box-shadow: 0 0 0 3px #7436ed13;
         }
-        .input-wrap span {
-          flex-shrink: 0;
-          font-size: 16px;
-        }
-        .input-wrap input {
+        .submit {
           width: 100%;
-          min-width: 0;
-          padding: 13px 0;
-          border: 0;
-          outline: 0;
-          color: #17152b;
-          background: transparent;
-          font-size: 13px;
-        }
-        .input-wrap input::placeholder {
-          color: #aaa5b7;
-        }
-        .remember-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 8px;
-          margin: 14px 0;
-          color: #716a85;
-          font-size: 10px;
-        }
-        .remember-row button,
-        .switch-copy button {
-          border: 0;
-          padding: 0;
-          background: transparent;
-          color: #7436ed;
-          font-size: inherit;
-          font-weight: 800;
-        }
-        .submit-button {
-          width: 100%;
-          margin-top: 20px;
+          margin-top: 22px;
           padding: 14px;
           border: 0;
           border-radius: 11px;
           color: white;
           background: linear-gradient(100deg, #7436ed, #f02c91);
-          box-shadow: 0 6px 16px #a03ce52b;
           font-size: 13px;
           font-weight: 800;
+          cursor: pointer;
         }
-        .submit-button:disabled {
-          opacity: .6;
+        .submit:disabled {
+          opacity: 0.6;
+          cursor: wait;
         }
         .notice,
         .error {
@@ -598,102 +489,62 @@ export default function AuthPage() {
           color: #b42345;
           background: #fff0f3;
         }
-        .or-divider {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin: 17px 0;
-          color: #9992a8;
-          font-size: 10px;
-        }
-        .or-divider::before,
-        .or-divider::after {
-          content: "";
-          height: 1px;
-          flex: 1;
-          background: #eeeaf4;
-        }
-        .secondary-button {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
-          margin-top: 9px;
-          padding: 12px;
-          border: 1px solid #e8e4f0;
-          border-radius: 11px;
-          background: #fff;
-          color: #29253b;
-          font-size: 11px;
-          font-weight: 700;
-        }
-        .secondary-button:hover {
-          background: #faf8ff;
-          border-color: #d9c8ff;
-        }
-        .google-mark {
-          color: #4285f4;
-          font-size: 16px;
-          font-weight: 900;
-        }
-        .apple-mark {
-          color: #111;
-          font-size: 15px;
-        }
         .switch-copy {
-          margin: 23px 0 0;
+          margin: 22px 0 0;
           color: #777187;
           text-align: center;
           font-size: 11px;
         }
+        .switch-copy button {
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: #7436ed;
+          font-weight: 800;
+          cursor: pointer;
+        }
+        .back-home {
+          display: block;
+          margin: 20px auto 0;
+          border: 0;
+          background: transparent;
+          color: #716a85;
+          font-size: 11px;
+          cursor: pointer;
+        }
         @media (max-width: 700px) {
           .auth-page {
-            padding: 16px;
-            align-items: flex-start;
+            padding: 14px;
+            align-items: start;
           }
           .auth-layout {
-            min-height: auto;
             max-width: 440px;
+            min-height: auto;
             margin: auto;
             grid-template-columns: 1fr;
             border-radius: 22px;
           }
-          .auth-intro {
-            padding: 22px 23px 15px;
+          .intro {
+            padding: 20px 22px 12px;
             background: transparent;
           }
-          .brand {
-            font-size: 31px;
-          }
-          .intro-copy {
-            display: none;
-          }
+          .intro-copy,
           .intro-footer {
             display: none;
           }
-          .auth-card-wrap {
+          .card-wrap {
             padding: 0 12px 16px;
-            background: transparent;
           }
           .auth-card {
             max-width: none;
             padding: 25px 21px;
-            border-radius: 19px;
-            box-shadow: 0 12px 35px #4c307c10;
-          }
-          .card-brand {
-            font-size: 32px;
-          }
-          .auth-card h2 {
-            font-size: 23px;
           }
         }
         @media (max-width: 360px) {
           .auth-page {
             padding: 10px;
           }
-          .auth-card-wrap {
+          .card-wrap {
             padding: 0 7px 10px;
           }
           .auth-card {
