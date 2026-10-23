@@ -2,9 +2,9 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "VYBE — Discover Events Worldwide",
+  title: "Party Event — Discover Events Worldwide",
   description:
-    "Discover concerts, parties, festivals, nightlife and experiences around the world.",
+  "Discover parties, concerts, festivals, nightlife and events across the USA with Party Event.",
   verification: {
   google: "W_oY8uGmgZZLUh8KB5uPwD1YZtsS5LGFJEvsSEJKFYk",
 },
