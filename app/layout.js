@@ -1,6 +1,6 @@
 
 import "./globals.css";
-import { GoogleAnalytics } from "@next/third-parties/google";
+import Script from "next/script";
 
 export const metadata = {
   title: "Party Event — Discover Events Worldwide",
@@ -25,7 +25,19 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body>
         {children}
-        <GoogleAnalytics gaId="G-SDF6G0FLZ1" />
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-SDF6G0FLZ1"
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){window.dataLayer.push(arguments);}
+            window.gtag = gtag;
+            gtag('js', new Date());
+            gtag('config', 'G-SDF6G0FLZ1');
+          `}
+        </Script>
       </body>
     </html>
   );
