@@ -8,7 +8,7 @@ export const metadata = {
     "Discover parties, concerts, festivals, nightlife and events across the USA with Party Event.",
   metadataBase: new URL("https://vybe1-r4pb.vercel.app"),
   verification: {
-    google: "W_oY8uGmgZZLUh8KB5uPwD1YZtsS5LGFJEvsSEJKFYk",
+    google: <meta name="google-site-verification" content="5XNdQ9NcdgN5Mma5RxPuia11Ie0O74WTHZqgp6VchP8" />
   },
   openGraph: {
     title: "Party Event — Discover Events Worldwide",
